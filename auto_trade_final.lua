@@ -34,9 +34,9 @@ print("===========================================")
 print("  Multi-Target Auto Trade System v1.1.0")
 print("===========================================")
 
--- Load Progress UI (REPLACE THIS URL WITH YOUR GITHUB RAW URL)
+-- Load Progress UI
 local UILoaded = pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/DevExDC/MyProject/refs/heads/main/PROGRESS_UI_UNIVERSAL.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/DevExDC/MyProject/refs/heads/main/progress_ui_universal.lua"))()
 end)
 
 if UILoaded then
