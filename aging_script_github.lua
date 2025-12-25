@@ -50,6 +50,24 @@ task.wait(1.5)
 
 print("✅ Game loaded!")
 
+-- Load Progress UI
+local UILoaded = pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/DevExDC/MyProject/refs/heads/main/progress_ui_universal.lua"))()
+end)
+
+if UILoaded then
+    print("✅ Progress UI loaded")
+    task.wait(1)
+    
+    -- Set UI for Aging mode
+    if getgenv().ProgressUI then
+        getgenv().ProgressUI.SetTitle("🐾 Auto Aging Progress")
+        getgenv().ProgressUI.SetStatus("⏳ Initializing game...")
+    end
+else
+    warn("⚠️ Progress UI failed to load, continuing without UI")
+end
+
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -101,6 +119,11 @@ end
 pcall(enter_the_game)
 
 print("✅ Entered the game!")
+
+-- Update UI
+if getgenv().ProgressUI then
+    getgenv().ProgressUI.SetStatus("⏳ Waiting 30 seconds...")
+end
 
 -- ============================================
 -- 30 SECOND DELAY BEFORE STARTING
@@ -649,6 +672,12 @@ local function start_aging_process()
     print("\n🔧 PHASE 1: AGING NORMAL PETS")
     print("========================================")
     
+    -- Update UI
+    if getgenv().ProgressUI then
+        getgenv().ProgressUI.SetStatus("🔧 Phase 1: Aging normal pets...")
+        getgenv().ProgressUI.UpdateStats("🧪 Potions: " .. #total_potions, "📊 Phase: 1/3")
+    end
+    
     local normal_pets = get_all_normal_pets(CONFIG.PET_KIND)
     
     if #normal_pets == 0 then
@@ -666,6 +695,12 @@ local function start_aging_process()
             end
             
             print("\n[" .. i .. "/" .. #normal_pets .. "] Aging normal pet...")
+            
+            -- Update UI per pet
+            if getgenv().ProgressUI then
+                getgenv().ProgressUI.UpdateProgress(i, #normal_pets, aged_count)
+                getgenv().ProgressUI.UpdateStats("🧪 Potions: " .. #total_potions, "🐾 Aged: " .. aged_count)
+            end
             
             if age_pet_fully(pet_unique, potionCost, total_potions) then
                 aged_count = aged_count + 1
@@ -689,6 +724,11 @@ local function start_aging_process()
     -- Make neons from full grown normal pets
     print("\n🌟 MAKING NEONS FROM FULL GROWN NORMAL PETS")
     print("========================================")
+    
+    -- Update UI
+    if getgenv().ProgressUI then
+        getgenv().ProgressUI.SetStatus("🌟 Making neons...")
+    end
     
     local full_grown_normal = get_full_grown_normal_pets(CONFIG.PET_KIND)
     local neons_made = 0
@@ -741,6 +781,12 @@ local function start_aging_process()
         print("========================================")
         print("Potions remaining: " .. #total_potions)
         
+        -- Update UI
+        if getgenv().ProgressUI then
+            getgenv().ProgressUI.SetStatus("🌟 Phase 2: Aging neon pets...")
+            getgenv().ProgressUI.UpdateStats("🌟 Neons: " .. neons_made, "📊 Phase: 2/3")
+        end
+        
         task.wait(2)
         
         local neon_pets = get_all_neon_pets(CONFIG.PET_KIND)
@@ -759,6 +805,12 @@ local function start_aging_process()
                 end
                 
                 print("\n[" .. i .. "/" .. #neon_pets .. "] Aging neon pet...")
+                
+                -- Update UI
+                if getgenv().ProgressUI then
+                    getgenv().ProgressUI.UpdateProgress(i, #neon_pets, neon_aged_count)
+                    getgenv().ProgressUI.UpdateStats("🧪 Potions: " .. #total_potions, "🌟 Neons Aged: " .. neon_aged_count)
+                end
                 
                 if age_pet_fully(neon_unique, potionCost, total_potions) then
                     neon_aged_count = neon_aged_count + 1
@@ -783,6 +835,12 @@ local function start_aging_process()
     -- ============================================
     print("\n💎 PHASE 3: MAKING MEGA NEONS")
     print("========================================")
+    
+    -- Update UI
+    if getgenv().ProgressUI then
+        getgenv().ProgressUI.SetStatus("💎 Phase 3: Making mega neons...")
+        getgenv().ProgressUI.UpdateStats("🌟 Neons: " .. neons_made, "📊 Phase: 3/3")
+    end
     
     -- Wait for neon pets to become luminous
     print("⏳ Waiting 10 seconds for neon pets to reach luminous...")
@@ -863,6 +921,11 @@ local function start_aging_process()
     print("Megas made: " .. megas_made)
     
     sendToWebhook("🎉 Process Complete!", finalMsg, false, true) -- IMMEDIATE
+    
+    -- Complete UI
+    if getgenv().ProgressUI then
+        getgenv().ProgressUI.Complete()
+    end
 end
 
 -- ============================================
