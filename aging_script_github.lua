@@ -939,3 +939,20 @@ print("✅ SCRIPT COMPLETE")
 print("========================================")
 
 getgenv().AgingScript.Running = false
+-- ADD THIS AT THE END OF YOUR AGING SCRIPT
+-- After all pets are fully grown
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local accountId = LocalPlayer.Name
+
+-- Create status file
+local success = pcall(function()
+    writefile("aged_" .. accountId .. ".txt", "complete")
+end)
+
+if success then
+    print("✅ Aging complete! Status file created: aged_" .. accountId .. ".txt")
+end
