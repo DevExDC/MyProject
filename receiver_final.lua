@@ -280,23 +280,6 @@ if not success then
     warn("❌ ERROR: " .. tostring(error_msg))
     sendWebhook("❌ Script Error", "```\n" .. tostring(error_msg) .. "\n```", true)
 end
--- ADD THIS AT THE END OF YOUR RECEIVER SCRIPT
--- After pets are received and trades complete
-
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
--- Get account identifier (use username as fallback if no account ID)
-local accountId = LocalPlayer.Name
-
--- Create status file
-local success = pcall(function()
-    writefile("received_" .. accountId .. ".txt", "complete")
-end)
-
-if success then
-    print("✅ Status file created: received_" .. accountId .. ".txt")
-else
-    warn("❌ Failed to create status file")
-end
+-- Add this at the END of your RECEIVER script
+writefile("received_" .. game.Players.LocalPlayer.Name .. ".txt", "complete")
+print("✅ RECEIVER COMPLETE - File created!")
