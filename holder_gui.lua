@@ -16,6 +16,15 @@ local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 local holderName = LocalPlayer.Name
 
+-- ============== ANTI-AFK ==============
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("🔄 Anti-AFK triggered")
+end)
+print("✅ Anti-AFK enabled")
+
 -- Dehash
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
