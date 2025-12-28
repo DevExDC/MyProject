@@ -627,6 +627,21 @@ local function trade_to_receiver(username, total_pets_needed)
                 -- No pets left at all
                 StatusLabel.Text = string.format("❌ Out of pets! Traded %d/%d total", pets_traded, total_pets_needed)
                 
+                -- Tell receiver we don't have enough
+                pcall(function()
+                    request({
+                        Url = PC_SERVER_URL .. "/status",
+                        Method = "POST",
+                        Headers = {["Content-Type"] = "application/json"},
+                        Body = HttpService:JSONEncode({
+                            username = username,
+                            message = "insufficient_pets",
+                            pets_sent = pets_traded
+                        })
+                    })
+                    print(string.format("📨 Sent status to %s: insufficient_pets (%d sent)", username, pets_traded))
+                end)
+                
                 if pets_traded > 0 then
                     print(string.format("⚠️ PARTIAL COMPLETION: %d/%d pets", pets_traded, total_pets_needed))
                     mark_complete(username) -- Mark as done with partial
@@ -647,7 +662,7 @@ local function trade_to_receiver(username, total_pets_needed)
         end
         
         print("✅ Trade request sent, waiting for window...")
-        task.wait(3)
+        task.wait(2) -- Reduced from 3 to 2
         
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
         
@@ -671,17 +686,19 @@ local function trade_to_receiver(username, total_pets_needed)
             add_pet(petUnique)
             print("Added pet " .. i .. "/" .. #pets)
             StatusLabel.Text = string.format("📦 Trade #%d: Adding pets... (%d/%d)", trade_number, i, #pets)
-            task.wait(0.3)
+            task.wait(0.2) -- Reduced from 0.3 to 0.2
         end
         
         print("Accepting trade...")
-        StatusLabel.Text = string.format("✅ Trade #%d: Accepting...", trade_number)
-        task.wait(2)
+        StatusLabel.Text = string.format("✅ Trade #%d: Waiting for countdown...", trade_number)
+        task.wait(6) -- 6 second countdown in Adopt Me
         accept_trade()
-        task.wait(2)
+        StatusLabel.Text = string.format("✅ Trade #%d: Accepted!", trade_number)
+        task.wait(0.5) -- Brief wait after accept
         print("Confirming trade...")
         StatusLabel.Text = string.format("✅ Trade #%d: Confirming...", trade_number)
         confirm_trade()
+        StatusLabel.Text = string.format("✅ Trade #%d: Confirmed!", trade_number)
         
         -- Wait for trade to complete
         timeout = 0
@@ -712,8 +729,8 @@ local function trade_to_receiver(username, total_pets_needed)
         
         -- Wait before next trade
         if pets_traded < total_pets_needed then
-            print("Waiting 3 seconds before next trade...")
-            task.wait(3)
+            print("Waiting 2 seconds before next trade...")
+            task.wait(2) -- Reduced from 3 to 2
         end
     end
     
