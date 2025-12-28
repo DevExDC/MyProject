@@ -5,7 +5,7 @@
 
 getgenv().ReceiverConfig = {
     WEBHOOK_URL = "",
-    RARITY = "uncommon",  -- Set: legendary, ultra_rare, rare, uncommon, common
+    RARITY = "",  -- Set: legendary, ultra_rare, rare, uncommon, common
     FARMSYNC_API_KEY = "" -- For auto-disable when complete
 }
 
