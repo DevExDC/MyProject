@@ -1,15 +1,24 @@
 -- ============================================
--- RECEIVER SCRIPT - FINAL VERSION
+-- RECEIVER SCRIPT - FINAL VERSION (FIXED)
 -- Simple rarity-based calculation + Auto-Disable
+-- Config validation added
 -- ============================================
 
-getgenv().ReceiverConfig = {
-    WEBHOOK_URL = "",
-    RARITY = "",  -- Set: legendary, ultra_rare, rare, uncommon, common
-    FARMSYNC_API_KEY = "" -- For auto-disable when complete
-}
+-- Check if config exists, if not create default
+if not getgenv().ReceiverConfig then
+    getgenv().ReceiverConfig = {
+        WEBHOOK_URL = "",
+        RARITY = "uncommon",  -- DEFAULT
+        FARMSYNC_API_KEY = ""
+    }
+end
 
 local CONFIG = getgenv().ReceiverConfig
+
+-- VALIDATE CONFIG BEFORE RUNNING
+if not CONFIG.RARITY or CONFIG.RARITY == "" then
+    error("❌ ERROR: RARITY not set!\n\nPlease set ReceiverConfig.RARITY before loading script.\nExample:\ngetgenv().ReceiverConfig = {\n    WEBHOOK_URL = \"...\",\n    RARITY = \"legendary\",\n    FARMSYNC_API_KEY = \"...\"\n}")
+end
 
 local RARITY_AGE_UPS = {
     legendary = 7,
@@ -19,9 +28,16 @@ local RARITY_AGE_UPS = {
     common = 1
 }
 
+-- Validate rarity is valid
+local rarity_lower = string.lower(CONFIG.RARITY)
+if not RARITY_AGE_UPS[rarity_lower] then
+    error("❌ ERROR: Invalid RARITY: '" .. CONFIG.RARITY .. "'\n\nValid options:\n- legendary\n- ultra_rare\n- rare\n- uncommon\n- common")
+end
+
 print("===========================================")
 print("  RECEIVER - Final Version")
 print("===========================================")
+print("Rarity: " .. CONFIG.RARITY)
 
 -- Wait for game
 print("Waiting for game to load...")
@@ -244,19 +260,22 @@ pcall(function()
 
     if potions == 0 then
         warn("No age potions found!")
+        disableAccount()  -- Disable if no potions
         return
     end
     
-    local age_ups = RARITY_AGE_UPS[CONFIG.RARITY] or 1
+    local age_ups = RARITY_AGE_UPS[rarity_lower]
     local pets_needed = math.floor(potions / age_ups)
     
     if pets_needed == 0 then
         warn("Not enough potions!")
+        disableAccount()  -- Disable if not enough
         return
     end
     
     print("\n📊 Calculation:")
     print("   Rarity: " .. CONFIG.RARITY)
+    print("   Age-ups per pet: " .. age_ups)
     print("   Potions: " .. potions)
     print("   Pets needed: " .. pets_needed)
     
