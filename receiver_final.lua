@@ -205,11 +205,43 @@ local function setup_auto_accept(expected_pets)
             local was_visible = false
             local last_pet_count = initialPets
             local no_change_time = 0
-            local MAX_WAIT_TIME = 1800 -- 30 minutes timeout
+            local MAX_WAIT_TIME = 5400 -- 90 minutes timeout
+            local last_status_check = 0
             
             while task.wait(0.5) do
                 pcall(function()
                     local current = count_pets()
+                    
+                    -- Check for status message from holder every 10 seconds
+                    last_status_check = last_status_check + 0.5
+                    if last_status_check >= 10 then
+                        last_status_check = 0
+                        
+                        pcall(function()
+                            local response = request({
+                                Url = CONFIG.PC_SERVER_URL:gsub("/request", "/check_status/" .. playerName),
+                                Method = "GET"
+                            })
+                            
+                            if response.StatusCode == 200 then
+                                local status_data = HttpService:JSONDecode(response.Body)
+                                
+                                if status_data.message == "insufficient_pets" then
+                                    print("\n📨 STATUS FROM HOLDER: Insufficient pets!")
+                                    print(string.format("   Received: %d/%d pets", status_data.pets_sent or 0, expected_pets))
+                                    print("   Holder doesn't have enough pets")
+                                    print("   ✅ Proceeding to aging phase...\n")
+                                    
+                                    sendWebhook(string.format("📨 %s - Holder out of pets - Received %d/%d - Moving to aging", 
+                                        playerName, status_data.pets_sent or 0, expected_pets))
+                                    
+                                    disableAccount()
+                                    webhookSent = true
+                                    return
+                                end
+                            end
+                        end)
+                    end
                     
                     -- Check if received new pets
                     if current > last_pet_count then
@@ -224,7 +256,7 @@ local function setup_auto_accept(expected_pets)
                         -- Check timeout
                         if no_change_time >= MAX_WAIT_TIME and not webhookSent then
                             local received = current - initialPets
-                            print(string.format("⏱️ TIMEOUT: No pets received for 30 minutes"))
+                            print(string.format("⏱️ TIMEOUT: No pets received for 90 minutes"))
                             print(string.format("   Final count: %d/%d pets", received, expected_pets))
                             
                             if received > 0 then
