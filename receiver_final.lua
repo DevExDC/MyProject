@@ -192,22 +192,70 @@ local function setup_auto_accept(expected_pets)
         
         task.spawn(function()
             local was_visible = false
+            local last_pet_count = initialPets
+            local no_change_time = 0
+            local MAX_WAIT_TIME = 120 -- 2 minutes timeout
+            
             while task.wait(0.5) do
                 pcall(function()
+                    local current = count_pets()
+                    
+                    -- Check if received new pets
+                    if current > last_pet_count then
+                        -- Got pets! Reset timeout
+                        last_pet_count = current
+                        no_change_time = 0
+                        print(string.format("📦 Received pets! Total: %d/%d", current - initialPets, expected_pets))
+                    else
+                        -- No new pets, increment timer
+                        no_change_time = no_change_time + 0.5
+                        
+                        -- Check timeout
+                        if no_change_time >= MAX_WAIT_TIME and not webhookSent then
+                            local received = current - initialPets
+                            print(string.format("⏱️ TIMEOUT: No pets received for 2 minutes"))
+                            print(string.format("   Final count: %d/%d pets", received, expected_pets))
+                            
+                            if received > 0 then
+                                sendWebhook(string.format("⏱️ %s - TIMEOUT - Received %d/%d pets (partial)", playerName, received, expected_pets))
+                            else
+                                sendWebhook(string.format("⏱️ %s - TIMEOUT - No pets received", playerName))
+                            end
+                            
+                            print("🔴 Auto-disabling due to timeout...")
+                            disableAccount()
+                            webhookSent = true
+                            return
+                        end
+                    end
+                    
+                    -- Trade window monitoring
                     if tradeGui.Visible then
                         if not was_visible then
                             was_visible = true
+                            print("📋 Trade window opened!")
                         end
                     elseif was_visible then
                         was_visible = false
-                        local current = count_pets()
+                        
+                        current = count_pets()
                         local received = current - initialPets
                         
+                        print(string.format("📦 Trade closed! Progress: %d/%d pets", received, expected_pets))
+                        
                         if received >= expected_pets and not webhookSent then
-                            print("✅ ALL PETS RECEIVED!")
-                            sendWebhook("✅ " .. playerName .. " - COMPLETE")
+                            print("✅ ALL PETS RECEIVED! (" .. received .. "/" .. expected_pets .. ")")
+                            
+                            sendWebhook("✅ " .. playerName .. " - COMPLETE - Received all " .. expected_pets .. " pets!")
+                            print("📡 Completion webhook sent!")
+                            
                             disableAccount()
+                            
                             webhookSent = true
+                        elseif received < expected_pets then
+                            print(string.format("⏳ Waiting for more pets... (%d/%d)", received, expected_pets))
+                            -- Reset timeout after each trade
+                            no_change_time = 0
                         end
                     end
                 end)
