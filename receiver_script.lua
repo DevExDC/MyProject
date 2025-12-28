@@ -1,23 +1,25 @@
 -- ============================================
--- RECEIVER SCRIPT - FINAL VERSION (FIXED)
--- Simple rarity-based calculation + Auto-Disable
--- Config validation added
+-- RECEIVER - PC SERVER VERSION
+-- Posts request to PC HTTP server instead of webhook
 -- ============================================
 
--- Check if config exists, if not create default
 if not getgenv().ReceiverConfig then
     getgenv().ReceiverConfig = {
-        WEBHOOK_URL = "",
-        RARITY = "uncommon",  -- DEFAULT
+        PC_SERVER_URL = "http://YOUR_PC_IP:8080/request", -- Your PC's IP!
+        WEBHOOK_URL = "", -- Optional: for Discord notifications
+        RARITY = "uncommon",
         FARMSYNC_API_KEY = ""
     }
 end
 
 local CONFIG = getgenv().ReceiverConfig
 
--- VALIDATE CONFIG BEFORE RUNNING
+if CONFIG.PC_SERVER_URL == "" or CONFIG.PC_SERVER_URL:match("YOUR_PC_IP") then
+    error("❌ Set PC_SERVER_URL to your PC's IP!\nExample: http://192.168.1.100:8080/request")
+end
+
 if not CONFIG.RARITY or CONFIG.RARITY == "" then
-    error("❌ ERROR: RARITY not set!\n\nPlease set ReceiverConfig.RARITY before loading script.\nExample:\ngetgenv().ReceiverConfig = {\n    WEBHOOK_URL = \"...\",\n    RARITY = \"legendary\",\n    FARMSYNC_API_KEY = \"...\"\n}")
+    error("❌ Set RARITY!")
 end
 
 local RARITY_AGE_UPS = {
@@ -28,21 +30,17 @@ local RARITY_AGE_UPS = {
     common = 1
 }
 
--- Validate rarity is valid
 local rarity_lower = string.lower(CONFIG.RARITY)
 if not RARITY_AGE_UPS[rarity_lower] then
-    error("❌ ERROR: Invalid RARITY: '" .. CONFIG.RARITY .. "'\n\nValid options:\n- legendary\n- ultra_rare\n- rare\n- uncommon\n- common")
+    error("❌ Invalid RARITY!")
 end
 
 print("===========================================")
-print("  RECEIVER - Final Version")
+print("  RECEIVER - PC Server Version")
 print("===========================================")
-print("Rarity: " .. CONFIG.RARITY)
 
--- Wait for game
-print("Waiting for game to load...")
 repeat task.wait() until game:IsLoaded()
-repeat task.wait(1) until game:IsLoaded() and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
 task.wait(2)
 
 local Players = game:GetService("Players")
@@ -51,31 +49,22 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
 
-print("Game loaded!")
-
--- Dehash
-print("Dehashing remotes...")
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
-print("Remotes dehashed!")
 
--- Enter game
-print("Entering the game...")
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", {["source_for_logging"] = "intro_sequence"})
 task.wait(1)
 UIManager.set_app_visibility("MainMenuApp", false)
 UIManager.set_app_visibility("NewsApp", false)
 task.wait(2)
-print("Entered game!")
 
--- Get player data
 local function get_player_data()
     return require(ReplicatedStorage.ClientModules.Core.ClientData).get_data()[tostring(LocalPlayer)]
 end
 
--- Send webhook
+-- Send webhook (optional)
 local function sendWebhook(message)
     if CONFIG.WEBHOOK_URL == "" then return end
     pcall(function()
@@ -88,13 +77,38 @@ local function sendWebhook(message)
     end)
 end
 
--- Disable account
+-- POST request to PC server
+local function post_to_pc_server(potions, pets_needed)
+    pcall(function()
+        local data = {
+            username = playerName,
+            potions = potions,
+            pets_needed = pets_needed,
+            rarity = CONFIG.RARITY
+        }
+        
+        print("\n📡 Sending request to PC server...")
+        print("  URL: " .. CONFIG.PC_SERVER_URL)
+        print("  Username: " .. playerName)
+        print("  Pets needed: " .. pets_needed)
+        
+        local response = request({
+            Url = CONFIG.PC_SERVER_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
+        })
+        
+        if response.StatusCode == 200 then
+            print("✅ Request sent to PC successfully!")
+        else
+            warn("⚠️  PC server responded with: " .. response.StatusCode)
+        end
+    end)
+end
+
 local function disableAccount()
-    if CONFIG.FARMSYNC_API_KEY == "" then 
-        print("⚠️ No API key, skipping auto-disable")
-        return 
-    end
-    
+    if CONFIG.FARMSYNC_API_KEY == "" then return end
     pcall(function()
         request({
             Url = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
@@ -105,17 +119,14 @@ local function disableAccount()
             },
             Body = HttpService:JSONEncode({enabled = false})
         })
-        
         print("🔴 Account disabled!")
     end)
 end
 
--- Count age potions
 local function count_age_potions()
     local success, result = pcall(function()
         local data = get_player_data()
         if not data or not data.inventory or not data.inventory.food then return 0 end
-        
         local count = 0
         for _, item in pairs(data.inventory.food) do
             if item.kind == "pet_age_potion" then
@@ -124,11 +135,9 @@ local function count_age_potions()
         end
         return count
     end)
-    
     return success and result or 0
 end
 
--- Count pets
 local function count_pets()
     local success, count = pcall(function()
         local data = get_player_data()
@@ -140,37 +149,13 @@ local function count_pets()
     return success and count or 0
 end
 
--- Create request file
-local function create_request_file(potions, pets_needed)
-    pcall(function()
-        local content = "username=" .. playerName .. "\n"
-        content = content .. "potions=" .. potions .. "\n"
-        content = content .. "total_pets=" .. pets_needed .. "\n"
-        content = content .. "rarity=" .. CONFIG.RARITY .. "\n"
-        content = content .. "timestamp=" .. os.time() .. "\n"
-        content = content .. "status=pending\n"
-        
-        writefile("receiver_" .. playerName .. ".txt", content)
-        writefile("new_request_flag.txt", tostring(os.time()))
-        
-        print("Request file created: receiver_" .. playerName .. ".txt")
-        print("  Potions: " .. potions)
-        print("  Pets needed: " .. pets_needed)
-    end)
-end
-
--- Auto-accept
 local function setup_auto_accept(expected_pets)
-    print("Setting up auto-accept...")
-    
     pcall(function()
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
         local dialogApp = LocalPlayer.PlayerGui:FindFirstChild("DialogApp")
-        
         local initialPets = count_pets()
         local webhookSent = false
         
-        -- Phase 1: Accept popup
         task.spawn(function()
             while task.wait(0.3) do
                 pcall(function()
@@ -185,7 +170,6 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 2: Accept negotiation
         task.spawn(function()
             while task.wait(0.5) do
                 pcall(function()
@@ -196,7 +180,6 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 3: Confirm
         task.spawn(function()
             while task.wait(0.5) do
                 pcall(function()
@@ -207,60 +190,37 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Monitor completion
         task.spawn(function()
             local was_visible = false
             while task.wait(0.5) do
                 pcall(function()
                     if tradeGui.Visible then
                         if not was_visible then
-                            print("📋 Trade window opened!")
                             was_visible = true
                         end
                     elseif was_visible then
                         was_visible = false
-                        
                         local current = count_pets()
                         local received = current - initialPets
                         
-                        print("📦 Trade complete! Pets: " .. initialPets .. " → " .. current .. " (+" .. received .. "/" .. expected_pets .. ")")
-                        
                         if received >= expected_pets and not webhookSent then
-                            print("✅ ALL PETS RECEIVED! (" .. received .. "/" .. expected_pets .. ")")
-                            
-                            if isfile("receiver_" .. playerName .. ".txt") then
-                                delfile("receiver_" .. playerName .. ".txt")
-                                print("🗑️ Request file deleted")
-                            end
-                            
+                            print("✅ ALL PETS RECEIVED!")
                             sendWebhook("✅ " .. playerName .. " - COMPLETE")
-                            print("📡 Completion webhook sent!")
-                            
-                            -- Auto-disable account
                             disableAccount()
-                            
                             webhookSent = true
-                        elseif received < expected_pets then
-                            print("⏳ Waiting for more pets... (" .. received .. "/" .. expected_pets .. ")")
                         end
                     end
                 end)
             end
         end)
-        
-        print("✅ Auto-accept enabled! Expected: " .. expected_pets .. " pets")
     end)
 end
 
--- Main
 pcall(function()
-    print("\nCounting age potions...")
     local potions = count_age_potions()
-    print("Age Potions Found: " .. potions)
-
+    
     if potions == 0 then
-        warn("No age potions found!")
-        disableAccount()  -- Disable if no potions
+        disableAccount()
         return
     end
     
@@ -268,25 +228,18 @@ pcall(function()
     local pets_needed = math.floor(potions / age_ups)
     
     if pets_needed == 0 then
-        warn("Not enough potions!")
-        disableAccount()  -- Disable if not enough
+        disableAccount()
         return
     end
     
     print("\n📊 Calculation:")
-    print("   Rarity: " .. CONFIG.RARITY)
-    print("   Age-ups per pet: " .. age_ups)
     print("   Potions: " .. potions)
     print("   Pets needed: " .. pets_needed)
     
     setup_auto_accept(pets_needed)
-    create_request_file(potions, pets_needed)
+    post_to_pc_server(potions, pets_needed)  -- POST TO PC!
     
-    print("\n✅ SUCCESS! Waiting for " .. pets_needed .. " pets")
+    print("\n✅ Waiting for " .. pets_needed .. " pets")
 end)
-
-print("\n========================================")
-print("RECEIVER ACTIVE")
-print("========================================")
 
 while task.wait(10) do end
