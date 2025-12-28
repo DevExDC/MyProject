@@ -573,6 +573,7 @@ local function trade_to_receiver(username, total_pets_needed)
     local BATCH_SIZE = 18 -- Max pets per trade in Adopt Me
     local pets_traded = 0
     local trade_number = 1
+    local had_shortage = false
     
     while pets_traded < total_pets_needed do
         local remaining = total_pets_needed - pets_traded
@@ -588,6 +589,13 @@ local function trade_to_receiver(username, total_pets_needed)
         if not target then
             print("❌ PLAYER LEFT: " .. username)
             StatusLabel.Text = "❌ " .. username .. " left the server!"
+            
+            if pets_traded > 0 then
+                print(string.format("⚠️ PARTIAL TRADE: Sent %d/%d pets before player left", pets_traded, total_pets_needed))
+                StatusLabel.Text = string.format("⚠️ Partial: %d/%d pets (player left)", pets_traded, total_pets_needed)
+                mark_complete(username) -- Mark as done even if partial
+            end
+            
             return false
         end
         
@@ -599,9 +607,24 @@ local function trade_to_receiver(username, total_pets_needed)
         print("Pets found: " .. #pets .. " (need " .. this_batch .. ")")
         
         if #pets < this_batch then
-            print("❌ NOT ENOUGH PETS")
-            StatusLabel.Text = string.format("❌ Not enough pets! Have %d, need %d more", #pets, remaining)
-            return false
+            print("❌ NOT ENOUGH PETS IN INVENTORY")
+            
+            if #pets > 0 then
+                -- Trade what we have
+                print(string.format("⚠️ Trading partial batch: %d pets instead of %d", #pets, this_batch))
+                this_batch = #pets
+                had_shortage = true
+            else
+                -- No pets left at all
+                StatusLabel.Text = string.format("❌ Out of pets! Traded %d/%d total", pets_traded, total_pets_needed)
+                
+                if pets_traded > 0 then
+                    print(string.format("⚠️ PARTIAL COMPLETION: %d/%d pets", pets_traded, total_pets_needed))
+                    mark_complete(username) -- Mark as done with partial
+                end
+                
+                return false
+            end
         end
         
         print("Sending trade request...")
@@ -672,6 +695,12 @@ local function trade_to_receiver(username, total_pets_needed)
         
         StatusLabel.Text = string.format("✅ Progress: %d/%d pets traded to %s", pets_traded, total_pets_needed, username)
         
+        -- If we had a shortage, stop trying
+        if had_shortage then
+            print("⚠️ Stopping due to inventory shortage")
+            break
+        end
+        
         -- Wait before next trade
         if pets_traded < total_pets_needed then
             print("Waiting 3 seconds before next trade...")
@@ -679,15 +708,20 @@ local function trade_to_receiver(username, total_pets_needed)
         end
     end
     
-    print(string.format("\n🎉 ALL TRADES COMPLETE FOR %s", username))
-    print(string.format("Total: %d pets in %d trades", pets_traded, trade_number - 1))
+    if pets_traded >= total_pets_needed then
+        print(string.format("\n🎉 ALL TRADES COMPLETE FOR %s", username))
+        print(string.format("Total: %d pets in %d trades", pets_traded, trade_number - 1))
+        StatusLabel.Text = string.format("🎉 Completed! Traded %d pets to %s", pets_traded, username)
+    else
+        print(string.format("\n⚠️ PARTIAL TRADE FOR %s", username))
+        print(string.format("Total: %d/%d pets in %d trades", pets_traded, total_pets_needed, trade_number - 1))
+        StatusLabel.Text = string.format("⚠️ Partial: %d/%d pets to %s", pets_traded, total_pets_needed, username)
+    end
     
-    StatusLabel.Text = string.format("🎉 Completed! Traded %d pets to %s", pets_traded, username)
-    
-    -- Mark as complete on server
+    -- Mark as complete on server (even if partial)
     mark_complete(username)
     
-    return true
+    return pets_traded >= total_pets_needed
 end
 
 -- Main Loop
