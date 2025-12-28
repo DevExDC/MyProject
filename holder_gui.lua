@@ -483,33 +483,56 @@ local function get_pets(count)
         return {}
     end
     
+    print("\n=== PET SEARCH DEBUG ===")
+    print("Looking for pet kind: " .. petKind)
+    print("Rarity filter: " .. selectedRarity)
+    print("Neon only: " .. tostring(neonEnabled))
+    
+    local checked = 0
+    local matched = 0
+    
     for _, pet in pairs(playerData.inventory.pets) do
-        if pet.kind == petKind then
-            local is_neon = pet.properties and pet.properties.neon
-            local is_mega = pet.properties and pet.properties.mega
-            
-            -- Neon filter
-            if neonEnabled then
-                if not (is_neon or is_mega) then
-                    continue
-                end
-            end
-            
-            -- Rarity filter (if not "All")
-            if selectedRarity ~= "All" then
-                local petRarity = pet.rarity or "common"
-                if selectedRarity:lower():gsub(" ", "_") ~= petRarity:lower() then
-                    continue
-                end
-            end
-            
-            table.insert(pets, pet.unique)
-            
-            if #pets >= count then
-                break
+        checked = checked + 1
+        
+        -- Check pet kind
+        if pet.kind ~= petKind then
+            continue
+        end
+        
+        local is_neon = pet.properties and pet.properties.neon
+        local is_mega = pet.properties and pet.properties.mega
+        
+        -- Neon filter
+        if neonEnabled then
+            if not (is_neon or is_mega) then
+                print("  Skipped: Not neon/mega")
+                continue
             end
         end
+        
+        -- Rarity filter (if not "All")
+        if selectedRarity ~= "All" then
+            local petRarity = pet.rarity or "common"
+            local filterRarity = selectedRarity:lower():gsub(" ", "_")
+            
+            -- Make both lowercase for comparison
+            if filterRarity ~= petRarity:lower() then
+                print("  Skipped: Rarity mismatch (pet=" .. petRarity .. ", filter=" .. filterRarity .. ")")
+                continue
+            end
+        end
+        
+        matched = matched + 1
+        table.insert(pets, pet.unique)
+        print("  ✅ Matched pet #" .. matched)
+        
+        if #pets >= count then
+            break
+        end
     end
+    
+    print("Results: Checked " .. checked .. " pets, matched " .. matched .. ", needed " .. count)
+    print("===================\n")
     
     return pets
 end
@@ -533,64 +556,137 @@ local function confirm_trade()
     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
 end
 
-local function trade_to_receiver(username, pet_count)
-    StatusLabel.Text = string.format("🔄 Trading %d pets to %s...", pet_count, username)
+local function mark_complete(username)
+    pcall(function()
+        request({
+            Url = PC_SERVER_URL .. "/complete",
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode({username = username})
+        })
+    end)
+end
+
+local function trade_to_receiver(username, total_pets_needed)
+    StatusLabel.Text = string.format("🔄 Trading to %s (needs %d pets total)...", username, total_pets_needed)
     
-    if not Players:FindFirstChild(username) then
-        StatusLabel.Text = "❌ " .. username .. " not in server!"
-        return false
+    local BATCH_SIZE = 18 -- Max pets per trade in Adopt Me
+    local pets_traded = 0
+    local trade_number = 1
+    
+    while pets_traded < total_pets_needed do
+        local remaining = total_pets_needed - pets_traded
+        local this_batch = math.min(remaining, BATCH_SIZE)
+        
+        print(string.format("\n=== TRADE #%d ===", trade_number))
+        print(string.format("Progress: %d/%d pets traded", pets_traded, total_pets_needed))
+        print(string.format("This batch: %d pets", this_batch))
+        
+        -- Check if player still in server
+        local target = Players:FindFirstChild(username)
+        
+        if not target then
+            print("❌ PLAYER LEFT: " .. username)
+            StatusLabel.Text = "❌ " .. username .. " left the server!"
+            return false
+        end
+        
+        print("✅ Found player: " .. target.Name)
+        
+        -- Get pets for this batch
+        local pets = get_pets(this_batch)
+        
+        print("Pets found: " .. #pets .. " (need " .. this_batch .. ")")
+        
+        if #pets < this_batch then
+            print("❌ NOT ENOUGH PETS")
+            StatusLabel.Text = string.format("❌ Not enough pets! Have %d, need %d more", #pets, remaining)
+            return false
+        end
+        
+        print("Sending trade request...")
+        StatusLabel.Text = string.format("📤 Trade #%d: Sending to %s...", trade_number, username)
+        
+        if not send_trade(username) then
+            print("❌ SEND TRADE FAILED")
+            StatusLabel.Text = "❌ Failed to send trade request"
+            task.wait(2)
+            continue -- Try again
+        end
+        
+        print("✅ Trade request sent, waiting for window...")
+        task.wait(3)
+        
+        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+        
+        local timeout = 0
+        while not tradeGui.Visible and timeout < 10 do
+            task.wait(0.5)
+            timeout = timeout + 0.5
+        end
+        
+        if timeout >= 10 then
+            print("❌ TRADE WINDOW TIMEOUT")
+            StatusLabel.Text = "❌ Trade window timeout - retrying..."
+            task.wait(2)
+            continue -- Try again
+        end
+        
+        print("✅ Trade window opened")
+        
+        -- Add pets to trade
+        for i, petUnique in ipairs(pets) do
+            add_pet(petUnique)
+            print("Added pet " .. i .. "/" .. #pets)
+            StatusLabel.Text = string.format("📦 Trade #%d: Adding pets... (%d/%d)", trade_number, i, #pets)
+            task.wait(0.3)
+        end
+        
+        print("Accepting trade...")
+        StatusLabel.Text = string.format("✅ Trade #%d: Accepting...", trade_number)
+        task.wait(2)
+        accept_trade()
+        task.wait(2)
+        print("Confirming trade...")
+        StatusLabel.Text = string.format("✅ Trade #%d: Confirming...", trade_number)
+        confirm_trade()
+        
+        -- Wait for trade to complete
+        timeout = 0
+        repeat
+            task.wait(0.5)
+            timeout = timeout + 0.5
+        until not tradeGui.Visible or timeout > 20
+        
+        if timeout > 20 then
+            print("⚠️ CONFIRM TIMEOUT")
+            StatusLabel.Text = "⚠️ Trade confirmation timeout - retrying..."
+            task.wait(2)
+            continue -- Try again
+        end
+        
+        print(string.format("✅ TRADE #%d COMPLETE", trade_number))
+        
+        pets_traded = pets_traded + this_batch
+        trade_number = trade_number + 1
+        
+        StatusLabel.Text = string.format("✅ Progress: %d/%d pets traded to %s", pets_traded, total_pets_needed, username)
+        
+        -- Wait before next trade
+        if pets_traded < total_pets_needed then
+            print("Waiting 3 seconds before next trade...")
+            task.wait(3)
+        end
     end
     
-    local pets = get_pets(pet_count)
+    print(string.format("\n🎉 ALL TRADES COMPLETE FOR %s", username))
+    print(string.format("Total: %d pets in %d trades", pets_traded, trade_number - 1))
     
-    if #pets < pet_count then
-        StatusLabel.Text = string.format("❌ Not enough pets! Have %d, need %d", #pets, pet_count)
-        return false
-    end
+    StatusLabel.Text = string.format("🎉 Completed! Traded %d pets to %s", pets_traded, username)
     
-    if not send_trade(username) then
-        StatusLabel.Text = "❌ Failed to send trade request"
-        return false
-    end
+    -- Mark as complete on server
+    mark_complete(username)
     
-    task.wait(3)
-    
-    local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-    
-    local timeout = 0
-    while not tradeGui.Visible and timeout < 10 do
-        task.wait(0.5)
-        timeout = timeout + 0.5
-    end
-    
-    if timeout >= 10 then
-        StatusLabel.Text = "❌ Trade window timeout"
-        return false
-    end
-    
-    for i, petUnique in ipairs(pets) do
-        add_pet(petUnique)
-        StatusLabel.Text = string.format("📦 Adding pets... (%d/%d)", i, #pets)
-        task.wait(0.5)
-    end
-    
-    task.wait(2)
-    accept_trade()
-    task.wait(2)
-    confirm_trade()
-    
-    timeout = 0
-    repeat
-        task.wait(0.5)
-        timeout = timeout + 0.5
-    until not tradeGui.Visible or timeout > 15
-    
-    if timeout > 15 then
-        StatusLabel.Text = "⚠️ Trade confirmation timeout"
-        return false
-    end
-    
-    StatusLabel.Text = "✅ Trade completed!"
     return true
 end
 
