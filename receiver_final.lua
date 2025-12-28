@@ -1,11 +1,12 @@
 -- ============================================
 -- RECEIVER SCRIPT - FINAL VERSION
--- Simple rarity-based calculation + Webhook
+-- Simple rarity-based calculation + Auto-Disable
 -- ============================================
 
 getgenv().ReceiverConfig = {
-    WEBHOOK_URL = "https://discord.com/api/webhooks/1454419132371042358/U45TbmAIksgoEDwC8fXrhlMe0w6lEVQ2KRjOCL2OeI_eiy4ZZA6Lfi7J280unr5vgXo1",
-    RARITY = "legendary"  -- Set: legendary, ultra_rare, rare, uncommon, common
+    WEBHOOK_URL = "",
+    RARITY = "uncommon",  -- Set: legendary, ultra_rare, rare, uncommon, common
+    FARMSYNC_API_KEY = "" -- For auto-disable when complete
 }
 
 local CONFIG = getgenv().ReceiverConfig
@@ -68,6 +69,28 @@ local function sendWebhook(message)
             Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode({["content"] = message})
         })
+    end)
+end
+
+-- Disable account
+local function disableAccount()
+    if CONFIG.FARMSYNC_API_KEY == "" then 
+        print("⚠️ No API key, skipping auto-disable")
+        return 
+    end
+    
+    pcall(function()
+        request({
+            Url = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
+            Method = "PUT",
+            Headers = {
+                ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
+                ["Content-Type"] = "application/json"
+            },
+            Body = HttpService:JSONEncode({enabled = false})
+        })
+        
+        print("🔴 Account disabled!")
     end)
 end
 
@@ -196,6 +219,10 @@ local function setup_auto_accept(expected_pets)
                             
                             sendWebhook("✅ " .. playerName .. " - COMPLETE")
                             print("📡 Completion webhook sent!")
+                            
+                            -- Auto-disable account
+                            disableAccount()
+                            
                             webhookSent = true
                         elseif received < expected_pets then
                             print("⏳ Waiting for more pets... (" .. received .. "/" .. expected_pets .. ")")
