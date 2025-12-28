@@ -1,53 +1,30 @@
 -- ============================================
--- ADOPT ME PET AGING SCRIPT - FARMSYNC EDITION
--- Auto-ages pets with smart potion usage
--- Auto-disables account when complete
+-- COMPLETE SMART AGING SCRIPT
+-- 1. Ages ALL pets (normal + neon)
+-- 2. Makes neons when 4 full grown
+-- 3. Makes megas when 4 luminous neons
+-- 4. Detects completion by AGE POTIONS = 0
+-- 5. Auto-disables account when done
 -- ============================================
 
--- Check if already running
-if getgenv().AgingScript then
-    warn("⚠️ Aging script already running!")
-    return
-end
-
-getgenv().AgingScript = {
-    Running = true,
-    Version = "3.0"
+getgenv().AgingConfig = {
+    PET_KIND = "", -- remote id of the pet
+    RARITY = "uncommon", -- legendary, ultra_rare, rare, uncommon, common
+    WEBHOOK_URL = "",
+    FARMSYNC_API_KEY = ""
 }
-
--- ============================================
--- CONFIGURATION VIA GETGENV
--- ============================================
-if not getgenv().AgingConfig then
-    getgenv().AgingConfig = {
-        PET_KIND = "moon_2025_snorgle",
-        RARITY = "uncommon",
-        WEBHOOK_URL = "",
-        FARMSYNC_API_KEY = ""
-    }
-end
 
 local CONFIG = getgenv().AgingConfig
 
--- Validate configuration
 if CONFIG.PET_KIND == "" then
-    error("❌ Please set AgingConfig.PET_KIND")
+    error("❌ Set PET_KIND!")
 end
 
-if CONFIG.RARITY == "" then
-    error("❌ Please set AgingConfig.RARITY")
-end
-
--- ============================================
--- WAIT FOR GAME TO LOAD
--- ============================================
-print("⏳ Waiting for game to load...")
-
+-- Wait for game
+print("⏳ Loading...")
 repeat task.wait() until game:IsLoaded()
-repeat task.wait(1) until game:IsLoaded() and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
 task.wait(2)
-
-print("✅ Game loaded!")
 
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -55,58 +32,22 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
 
--- ============================================
--- DEHASH REMOTES
--- ============================================
-print("🔧 Dehashing remotes...")
+print("✅ Loaded!")
 
+-- Dehash
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
 
-print("✅ Remotes dehashed!")
-
--- ============================================
--- ENTER THE GAME
--- ============================================
-print("🏠 Entering the game...")
-
+-- Enter game
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
+ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", {["source_for_logging"] = "intro_sequence"})
+task.wait(1)
+UIManager.set_app_visibility("MainMenuApp", false)
+UIManager.set_app_visibility("NewsApp", false)
+task.wait(2)
 
-local function enter_the_game()
-    local args = {
-        [1] = "Parents",
-        [2] = {
-            ["source_for_logging"] = "intro_sequence",
-        },
-    }
-    
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer(unpack(args))
-    task.wait(1)
-    
-    UIManager.set_app_visibility("MainMenuApp", false)
-    UIManager.set_app_visibility("NewsApp", false)
-    UIManager.set_app_visibility("DialogApp", false)
-    UIManager.set_app_visibility("MinigameRewardsApp", false)
-    
-    task.wait(3)
-    
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
-    UIManager.set_app_visibility("DailyLoginApp", false)
-end
-
-pcall(enter_the_game)
-
-print("✅ Entered the game!")
-
--- Wait 30 seconds before starting
-print("\n⏳ Waiting 30 seconds before starting...")
-task.wait(30)
-print("✅ Starting aging process now!")
-
--- ============================================
--- RARITY POTION MAPPING
--- ============================================
+-- Rarity potions
 local RARITY_POTIONS = {
     ["common"] = 1,
     ["uncommon"] = 2,
@@ -115,31 +56,22 @@ local RARITY_POTIONS = {
     ["legendary"] = 7
 }
 
--- ============================================
--- WEBHOOK FUNCTION
--- ============================================
-local function sendWebhook(message)
+-- Webhook
+local function sendWebhook(msg)
     if CONFIG.WEBHOOK_URL == "" then return end
-    
     pcall(function()
         request({
             Url = CONFIG.WEBHOOK_URL,
             Method = "POST",
             Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode({["content"] = message})
+            Body = HttpService:JSONEncode({["content"] = msg})
         })
     end)
 end
 
--- ============================================
--- FARMSYNC AUTO-DISABLE FUNCTION
--- ============================================
+-- Disable account
 local function disableAccount()
-    if CONFIG.FARMSYNC_API_KEY == "" then 
-        print("⚠️ No FarmSync API key, skipping auto-disable")
-        return 
-    end
-    
+    if CONFIG.FARMSYNC_API_KEY == "" then return end
     pcall(function()
         request({
             Url = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
@@ -148,73 +80,42 @@ local function disableAccount()
                 ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
                 ["Content-Type"] = "application/json"
             },
-            Body = HttpService:JSONEncode({
-                enabled = false
-            })
+            Body = HttpService:JSONEncode({enabled = false})
         })
-        
-        print("🔴 Account auto-disabled via FarmSync!")
+        print("🔴 Account disabled!")
     end)
 end
 
--- ============================================
--- UTILITY FUNCTIONS
--- ============================================
-
+-- Get player data
 local function get_player_data()
     local success, result = pcall(function()
         return require(ReplicatedStorage.ClientModules.Core.ClientData).get_data()[tostring(LocalPlayer)]
     end)
-    
     return success and result or nil
 end
 
-local function count_pets_needing_aging()
+-- Count age potions
+local function get_age_potion_count()
     local success, count = pcall(function()
         local data = get_player_data()
-        if not data or not data.inventory or not data.inventory.pets then return 0 end
+        if not data or not data.inventory or not data.inventory.food then return 0 end
         
         local total = 0
-        for _, pet in pairs(data.inventory.pets) do
-            if pet.kind == CONFIG.PET_KIND then
-                local age = pet.properties and pet.properties.age or 0
-                if age < 6 then
-                    total = total + 1
-                end
+        for _, item in pairs(data.inventory.food) do
+            if item.kind == "pet_age_potion" then
+                total = total + 1
             end
         end
-        
         return total
     end)
-    
     return success and count or 0
 end
 
-local function get_all_normal_pets(pet_kind)
-    local success, result = pcall(function()
-        local data = get_player_data()
-        if not data then error("No player data") end
-        
-        local normal_pets = {}
-        for _, pet in pairs(data.inventory.pets) do
-            local age = pet.properties and pet.properties.age or 0
-            local is_neon = pet.properties and pet.properties.neon
-            
-            if pet.kind == pet_kind and not pet.is_egg and not is_neon and age < 6 then
-                table.insert(normal_pets, pet.unique)
-            end
-        end
-        
-        return normal_pets
-    end)
-    
-    return success and result or {}
-end
-
+-- Get age potions as table
 local function get_age_potions()
     local success, result = pcall(function()
         local data = get_player_data()
-        if not data then error("No player data") end
+        if not data then return {} end
         
         local potions = {}
         for _, item in pairs(data.inventory.food) do
@@ -222,176 +123,275 @@ local function get_age_potions()
                 table.insert(potions, item.unique)
             end
         end
-        
         return potions
     end)
-    
     return success and result or {}
 end
 
-local function equip_pet(pet_unique)
-    local success = pcall(function()
-        local args = {
-            pet_unique,
-            {
-                use_sound_delay = true,
-                equip_as_last = false
-            }
-        }
+-- Get pets that need aging (age < 6, any type)
+local function get_pets_needing_aging()
+    local success, result = pcall(function()
+        local data = get_player_data()
+        if not data then return {} end
         
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(unpack(args))
+        local pets = {}
+        for _, pet in pairs(data.inventory.pets) do
+            if pet.kind == CONFIG.PET_KIND then
+                local age = pet.properties and pet.properties.age or 0
+                
+                -- Any pet under age 6 needs aging (normal or neon)
+                if age < 6 then
+                    table.insert(pets, pet.unique)
+                end
+            end
+        end
+        return pets
     end)
-    
-    return success
+    return success and result or {}
 end
 
-local function feed_pet_all_potions(pet_unique, potion_count, potions)
-    local success = pcall(function()
-        if #potions < potion_count then
-            error("Not enough potions!")
-        end
+-- Get full grown NORMAL pets (for making neons)
+local function get_full_grown_normal()
+    local success, result = pcall(function()
+        local data = get_player_data()
+        if not data then return {} end
         
-        local first_potion = table.remove(potions, 1)
+        local pets = {}
+        for _, pet in pairs(data.inventory.pets) do
+            if pet.kind == CONFIG.PET_KIND then
+                local age = pet.properties and pet.properties.age or 0
+                local is_neon = pet.properties and pet.properties.neon
+                
+                if age >= 6 and not is_neon then
+                    table.insert(pets, pet.unique)
+                end
+            end
+        end
+        return pets
+    end)
+    return success and result or {}
+end
+
+-- Get luminous NEON pets (for making megas)
+local function get_luminous_neons()
+    local success, result = pcall(function()
+        local data = get_player_data()
+        if not data then return {} end
+        
+        local neons = {}
+        for _, pet in pairs(data.inventory.pets) do
+            if pet.kind == CONFIG.PET_KIND then
+                local age = pet.properties and pet.properties.age or 0
+                local is_neon = pet.properties and pet.properties.neon
+                local is_mega = pet.properties and pet.properties.mega
+                
+                if age >= 6 and is_neon and not is_mega then
+                    table.insert(neons, pet.unique)
+                end
+            end
+        end
+        return neons
+    end)
+    return success and result or {}
+end
+
+-- Equip pet
+local function equip_pet(unique)
+    return pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(unique, {
+            use_sound_delay = true,
+            equip_as_last = false
+        })
+    end)
+end
+
+-- Feed pet all potions
+local function feed_pet(pet_unique, potion_count, potions)
+    if #potions < potion_count then return false end
+    
+    local success = pcall(function()
+        local first = table.remove(potions, 1)
         local additional = {}
         
         for i = 1, potion_count - 1 do
             table.insert(additional, table.remove(potions, 1))
         end
         
-        local args = {
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(
             "__Enum_PetObjectCreatorType_2",
             {
                 pet_unique = pet_unique,
-                unique_id = first_potion,
+                unique_id = first,
                 additional_consume_uniques = additional
             }
-        }
-        
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(unpack(args))
+        )
     end)
     
     return success
 end
 
-local function age_pet_fully(pet_unique, potion_count, potions)
-    if not equip_pet(pet_unique) then
-        return false
-    end
-    
+-- Age pet
+local function age_pet(pet_unique, potion_count, potions)
+    if not equip_pet(pet_unique) then return false end
     task.wait(0.5)
-    
-    if not feed_pet_all_potions(pet_unique, potion_count, potions) then
-        return false
-    end
-    
+    if not feed_pet(pet_unique, potion_count, potions) then return false end
     task.wait(9)
     return true
 end
 
--- ============================================
--- MAIN AGING PROCESS
--- ============================================
-local function start_aging_process()
-    print("\n========================================")
-    print("🚀 STARTING PET AGING PROCESS")
-    print("========================================")
-    print("Pet Kind: " .. CONFIG.PET_KIND)
-    print("Rarity: " .. CONFIG.RARITY:upper())
-    print("========================================\n")
-    
-    local rarity_lower = string.lower(CONFIG.RARITY)
-    local potionCost = RARITY_POTIONS[rarity_lower]
-    
-    if not potionCost then
-        error("Unknown rarity: " .. CONFIG.RARITY)
-    end
-    
-    local total_potions = get_age_potions()
-    local original_potion_count = #total_potions
-    
-    print("📊 Total age potions: " .. #total_potions)
-    
-    if #total_potions == 0 then
-        error("No age potions found!")
-    end
-    
-    local normal_pets = get_all_normal_pets(CONFIG.PET_KIND)
-    local aged_count = 0
-    
-    print("🐾 Pets to age: " .. #normal_pets)
-    
-    if #normal_pets > 0 then
-        for i, pet_unique in ipairs(normal_pets) do
-            if #total_potions < potionCost then 
-                print("⚠️ Out of potions!")
-                break 
-            end
-            
-            print("🔧 Aging pet " .. i .. "/" .. #normal_pets)
-            
-            if age_pet_fully(pet_unique, potionCost, total_potions) then
-                aged_count = aged_count + 1
-                print("✅ Pet " .. i .. " aged! Potions left: " .. #total_potions)
-            else
-                print("❌ Failed to age pet " .. i)
-            end
-            
-            task.wait(1)
-        end
-    end
-    
-    local potions_used = original_potion_count - #total_potions
-    
-    print("\n========================================")
-    print("🎉 AGING COMPLETE!")
-    print("Pets Aged: " .. aged_count)
-    print("Potions Used: " .. potions_used .. "/" .. original_potion_count)
-    print("========================================")
+-- Make neon
+local function make_neon(four_pets)
+    return pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(four_pets)
+    end)
+end
+
+-- Make mega
+local function make_mega(four_neons)
+    return pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(four_neons)
+    end)
 end
 
 -- ============================================
--- START PROCESS
+-- MAIN PROCESS
 -- ============================================
-print("🔧 Starting aging process...")
-start_aging_process()
+
+print("\n========================================")
+print("🚀 SMART AGING PROCESS")
+print("========================================")
+
+local rarity = string.lower(CONFIG.RARITY)
+local potionCost = RARITY_POTIONS[rarity]
+
+if not potionCost then
+    error("Invalid rarity!")
+end
+
+print("Pet: " .. CONFIG.PET_KIND)
+print("Rarity: " .. CONFIG.RARITY)
+print("Potions per pet: " .. potionCost)
+
+-- Wait 30 seconds
+print("\n⏳ Waiting 30 seconds...")
+task.wait(30)
+
+local initial_potions = get_age_potion_count()
+print("\n📊 Initial potions: " .. initial_potions)
+
+if initial_potions == 0 then
+    error("No potions!")
+end
+
+local total_potions = get_age_potions()
+local aged_count = 0
+local neons_made = 0
+local megas_made = 0
+
+-- LOOP: Age → Make Neons → Make Megas → Repeat
+while #total_potions >= potionCost do
+    
+    -- PHASE 1: Age pets
+    print("\n🔧 AGING PETS...")
+    local pets_to_age = get_pets_needing_aging()
+    
+    for i, pet in ipairs(pets_to_age) do
+        if #total_potions < potionCost then break end
+        
+        print("Aging pet " .. i .. "...")
+        if age_pet(pet, potionCost, total_potions) then
+            aged_count = aged_count + 1
+            print("✅ Aged! Potions left: " .. #total_potions)
+        end
+        
+        task.wait(1)
+    end
+    
+    task.wait(5)
+    
+    -- PHASE 2: Make neons
+    print("\n🌟 MAKING NEONS...")
+    local full_grown = get_full_grown_normal()
+    
+    while #full_grown >= 4 do
+        local four = {full_grown[1], full_grown[2], full_grown[3], full_grown[4]}
+        
+        if make_neon(four) then
+            neons_made = neons_made + 1
+            print("✅ Neon #" .. neons_made .. " made!")
+            task.wait(3)
+        end
+        
+        -- Refresh list
+        full_grown = get_full_grown_normal()
+    end
+    
+    task.wait(5)
+    
+    -- PHASE 3: Make megas
+    print("\n💎 MAKING MEGAS...")
+    local luminous = get_luminous_neons()
+    
+    while #luminous >= 4 do
+        local four = {luminous[1], luminous[2], luminous[3], luminous[4]}
+        
+        if make_mega(four) then
+            megas_made = megas_made + 1
+            print("✅ Mega #" .. megas_made .. " made!")
+            task.wait(3)
+        end
+        
+        -- Refresh list
+        luminous = get_luminous_neons()
+    end
+    
+    -- Check potions again
+    total_potions = get_age_potions()
+    
+    if #total_potions == 0 then
+        print("\n🎉 ALL POTIONS USED!")
+        break
+    end
+end
 
 -- ============================================
--- MONITOR FOR COMPLETION
+-- COMPLETION DETECTION (BY POTIONS)
 -- ============================================
-print("\n📊 Monitoring for completion...")
+
+print("\n========================================")
+print("🔍 CHECKING COMPLETION...")
+print("========================================")
 
 local webhookSent = false
 
 for i = 1, 60 do
     task.wait(5)
     
-    local remaining = count_pets_needing_aging()
+    local potions_left = get_age_potion_count()
     
-    if remaining == 0 and not webhookSent then
-        print("\n✅ ALL PETS FULL GROWN!")
+    print("Check #" .. i .. " - Potions: " .. potions_left)
+    
+    if potions_left == 0 and not webhookSent then
+        print("\n✅ NO POTIONS LEFT - COMPLETE!")
         
-        -- Send webhook
-        sendWebhook("✅ " .. playerName .. " - COMPLETE")
-        print("📡 Completion webhook sent!")
+        sendWebhook("✅ " .. playerName .. " - COMPLETE - Aged: " .. aged_count .. ", Neons: " .. neons_made .. ", Megas: " .. megas_made)
+        print("📡 Webhook sent!")
         
-        -- Auto-disable account
         disableAccount()
         
         webhookSent = true
         break
-    elseif i % 6 == 0 then
-        print("📊 Still aging... " .. remaining .. " pets remaining")
     end
 end
 
 if not webhookSent then
-    print("\n⏱️ Timeout reached, sending completion...")
     sendWebhook("✅ " .. playerName .. " - COMPLETE")
     disableAccount()
 end
 
 print("\n========================================")
-print("✅ SCRIPT COMPLETE")
+print("✅ SCRIPT COMPLETE!")
+print("Pets Aged: " .. aged_count)
+print("Neons Made: " .. neons_made)
+print("Megas Made: " .. megas_made)
 print("========================================")
-
-getgenv().AgingScript.Running = false
