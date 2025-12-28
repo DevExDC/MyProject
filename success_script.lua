@@ -1,73 +1,49 @@
 --[[
-    Multi-Target Auto Trade System (SUCCESS SCRIPT)
-    FINAL VERSION v2.0.0
-    - Fixed neon detection (v.properties.neon)
-    - Added auto-disable when complete
-    - Integrated with Progress UI
+    SUCCESS Auto-Trade Script - SIMPLIFIED
+    Trades ALL pets (normal, neon, mega) of specified kinds to holder
+    v3.0.0
 ]]
 
--- Services
 repeat wait() until game:IsLoaded()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
-local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
 
--- Modules
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
--- Configuration (loaded from main script)
+-- Configuration
 getgenv().Config = getgenv().Config or {
     usernames = {},
-    How_many_Pets = {},
     pets_to_trade = {},
-    Neon = false,
     Webhook = "",
-    FARMSYNC_API_KEY = "" -- For auto-disable
+    FARMSYNC_API_KEY = ""
 }
 
 local config = getgenv().Config
 
--- Variables
-local currentTargetIndex = 1
 local pets_unique_ids = {}
 local trade_status = false
 local completedTrades = {}
 
 print("===========================================")
-print("  Multi-Target Auto Trade System v2.0.0")
+print("  SUCCESS Auto-Trade System v3.0.0")
+print("  Trades ALL pets of specified kinds")
 print("===========================================")
 
--- Load Progress UI
-local UILoaded = pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/DevExDC/MyProject/refs/heads/main/progress_ui_universal.lua"))()
-end)
-
-if UILoaded then
-    print("✅ Progress UI loaded")
-    wait(1)
-else
-    warn("⚠️ Progress UI failed to load, continuing without UI")
-end
-
--- Dehash function
+-- Dehash
 local function dehash()
     local function rename(remotename, hashedremote)
         hashedremote.Name = remotename
     end
-    local success, err = pcall(function()
+    pcall(function()
         table.foreach(
             getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7),
             rename
         )
     end)
-    if success then
-        print("✅ Dehashed remotes successfully")
-    else
-        warn("❌ Dehash failed:", err)
-    end
+    print("✅ Dehashed remotes")
 end
 dehash()
 
@@ -93,69 +69,21 @@ local function disableAccount()
     end)
 end
 
--- Webhook function
-local function sendWebhook(username, petCount, status, extraInfo)
-    if not config.Webhook or config.Webhook == "" then return end
+-- Webhook
+local function sendWebhook(message)
+    if config.Webhook == "" then return end
     
-    local statusEmoji = status == "Success" and "✅" or (status:match("Failed") and "❌" or "⚠️")
-    local statusColor = status == "Success" and 5763719 or (status:match("Failed") and 15548997 or 16705372)
-    
-    local description = string.format(
-        "**Target Username:** `%s`\n**Pets Traded:** `%d`\n**Pet Type:** `%s`\n**Neon Only:** `%s`\n**Status:** %s `%s`",
-        username,
-        petCount,
-        config.pets_to_trade[1] or "Unknown",
-        config.Neon and "Yes ✨" or "No",
-        statusEmoji,
-        status
-    )
-    
-    if extraInfo then
-        description = description .. "\n**Details:** " .. extraInfo
-    end
-    
-    local embed = {
-        ["content"] = nil,
-        ["embeds"] = {{
-            ["title"] = "🤝 Auto Trade System",
-            ["description"] = description,
-            ["color"] = statusColor,
-            ["fields"] = {
-                {
-                    ["name"] = "📊 Executor",
-                    ["value"] = string.format("`%s`", playerName),
-                    ["inline"] = true
-                },
-                {
-                    ["name"] = "⏰ Time",
-                    ["value"] = string.format("<t:%d:R>", os.time()),
-                    ["inline"] = true
-                }
-            },
-            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S"),
-            ["footer"] = {
-                ["text"] = "Auto Trade System • v2.0.0"
-            }
-        }}
-    }
-    
-    local success, err = pcall(function()
-        local response = request({
+    pcall(function()
+        request({
             Url = config.Webhook,
             Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = HttpService:JSONEncode(embed)
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode({["content"] = message})
         })
     end)
-    
-    if not success then
-        warn("Webhook error:", err)
-    end
 end
 
--- Trade API functions
+-- Trade functions
 local function first_trade_accept()
     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
 end
@@ -167,75 +95,76 @@ end
 local function send_trade(username)
     local target = Players:FindFirstChild(username)
     if not target then
-        warn(string.format("Player %s not found in server!", username))
+        warn(string.format("Player %s not found!", username))
         return false
     end
     
-    local args = {[1] = target}
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(unpack(args))
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
     return true
 end
 
 local function add_items_in_trade(unique)
-    local args = {[1] = unique}
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unpack(args))
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
 end
 
--- Get pet unique IDs based on config (FIXED NEON DETECTION)
-local function get_pet_uniques(maxPets)
+-- Get ALL pets of specified kinds (normal, neon, mega - everything!)
+local function get_all_pets()
     local foundPets = {}
     local playerData = Data.get_data()[playerName]
     
     if not playerData or not playerData.inventory or not playerData.inventory.pets then
-        warn("No pet data found in inventory")
+        warn("No pet data found")
         return foundPets
     end
     
     print("\n🔍 Searching for pets...")
-    print("Target pets: " .. table.concat(config.pets_to_trade, ", "))
-    print("Neon only: " .. tostring(config.Neon))
-    print("Max needed: " .. maxPets)
+    print("Target pet kinds: " .. table.concat(config.pets_to_trade, ", "))
     print("---")
     
-    for i, v in pairs(playerData.inventory.pets) do
+    local normalCount = 0
+    local neonCount = 0
+    local megaCount = 0
+    
+    for _, pet in pairs(playerData.inventory.pets) do
+        -- Check if this pet matches any of the specified kinds
         for _, petKind in pairs(config.pets_to_trade) do
-            if v.kind == petKind then
-                local is_neon = v.properties and v.properties.neon
+            if pet.kind == petKind then
+                -- Get pet properties
+                local is_neon = pet.properties and pet.properties.neon
+                local is_mega = pet.properties and pet.properties.mega
                 
-                if config.Neon == true then
-                    if is_neon then
-                        table.insert(foundPets, v.unique)
-                        print(string.format("✅ Found NEON %s (Unique: %s)", v.kind, v.unique))
-                    else
-                        print(string.format("⏭️ Skipped NORMAL %s (not neon)", v.kind))
-                    end
-                elseif config.Neon == false then
-                    if not is_neon then
-                        table.insert(foundPets, v.unique)
-                        print(string.format("✅ Found NORMAL %s (Unique: %s)", v.kind, v.unique))
-                    else
-                        print(string.format("⏭️ Skipped NEON %s (neon not wanted)", v.kind))
-                    end
+                -- Add to trade list (ALL types!)
+                table.insert(foundPets, pet.unique)
+                
+                -- Count by type for logging
+                if is_mega then
+                    megaCount = megaCount + 1
+                    print(string.format("✅ Found MEGA %s", pet.kind))
+                elseif is_neon then
+                    neonCount = neonCount + 1
+                    print(string.format("✅ Found NEON %s", pet.kind))
+                else
+                    normalCount = normalCount + 1
+                    print(string.format("✅ Found NORMAL %s", pet.kind))
                 end
                 
-                if #foundPets >= maxPets then
-                    print("---")
-                    print(string.format("📊 Total found: %d pets (reached max)", #foundPets))
-                    return foundPets
-                end
+                break -- Don't check other pet kinds once matched
             end
         end
     end
     
     print("---")
-    print(string.format("📊 Total found: %d pets matching criteria", #foundPets))
+    print(string.format("📊 Total found: %d pets", #foundPets))
+    print(string.format("   Normal: %d | Neon: %d | Mega: %d", normalCount, neonCount, megaCount))
+    
     return foundPets
 end
 
 -- Main auto trade function
-local function autotrade(username, petCount)
+local function autotrade(username)
     local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
     
+    -- Phase 1: Send trade request
     if #pets_unique_ids > 0 and not tradeGui.Visible then
         trade_status = false
         local success = send_trade(username)
@@ -245,9 +174,10 @@ local function autotrade(username, petCount)
         print(string.format("📤 Trade request sent to %s", username))
         task.wait(2)
     
+    -- Phase 2: Add items to trade
     elseif not trade_status and tradeGui.Visible then
         local counter = 0
-        local maxSlots = math.min(#pets_unique_ids, 18)
+        local maxSlots = math.min(#pets_unique_ids, 18) -- Max 18 pets per trade
         
         print(string.format("Adding %d pets to trade...", maxSlots))
         
@@ -262,6 +192,7 @@ local function autotrade(username, petCount)
         trade_status = true
         task.wait(1)
     
+    -- Phase 3: Accept and confirm trade
     elseif trade_status and tradeGui.Visible then
         task.wait(1)
         first_trade_accept()
@@ -270,6 +201,7 @@ local function autotrade(username, petCount)
         confirm_trade()
         print("✅ Trade confirmed")
         
+        -- Wait for trade to close
         local timeout = 0
         repeat
             task.wait(0.5)
@@ -277,7 +209,7 @@ local function autotrade(username, petCount)
         until not tradeGui.Visible or timeout > 10
         
         if timeout > 10 then
-            warn("Trade timeout - moving to next")
+            warn("Trade timeout")
             return false
         end
         
@@ -288,55 +220,38 @@ local function autotrade(username, petCount)
     return true
 end
 
--- Main execution loop
-local totalPetsTraded = 0
-
-if getgenv().ProgressUI then
-    getgenv().ProgressUI.SetTitle("🤝 Auto Trade Progress")
-    getgenv().ProgressUI.SetStatus("🔄 Initializing...")
-end
-
-print(string.format("\n📋 Configuration Loaded:"))
-print(string.format("   • Targets: %d", #config.usernames))
-print(string.format("   • Pet Type: %s", table.concat(config.pets_to_trade, ", ")))
-print(string.format("   • Neon Only: %s", config.Neon and "Yes ✨" or "No"))
+-- Main execution
+print(string.format("\n📋 Configuration:"))
+print(string.format("   • Holder: %s", table.concat(config.usernames, ", ")))
+print(string.format("   • Pet Kinds: %s", table.concat(config.pets_to_trade, ", ")))
 print(string.format("   • Webhook: %s\n", config.Webhook ~= "" and "Enabled" or "Disabled"))
 
+local totalPetsTraded = 0
+
 for index, username in ipairs(config.usernames) do
-    local targetPetCount = tonumber(config.How_many_Pets[index]) or 0
-    
-    if targetPetCount <= 0 then
-        warn(string.format("⚠️ Skipping %s: Invalid pet count", username))
-        continue
-    end
-    
     print(string.format("\n┌────────────────────────────────────┐"))
-    print(string.format("│ 📊 Target [%d/%d]: %s", index, #config.usernames, username))
-    print(string.format("│ 📦 Required Pets: %d", targetPetCount))
+    print(string.format("│ 📊 Holder [%d/%d]: %s", index, #config.usernames, username))
     print(string.format("└────────────────────────────────────┘\n"))
     
-    if getgenv().ProgressUI then
-        getgenv().ProgressUI.UpdateTarget(username)
-        getgenv().ProgressUI.UpdateProgress(index - 1, #config.usernames, totalPetsTraded)
-    end
-    
+    -- Check if holder is in server
     if not Players:FindFirstChild(username) then
         warn(string.format("❌ %s is not in the server!", username))
-        sendWebhook(username, 0, "Failed - Not In Server")
+        sendWebhook(string.format("❌ %s - Failed - Not In Server", username))
         continue
     end
     
-    pets_unique_ids = get_pet_uniques(targetPetCount)
+    -- Get ALL pets of specified kinds
+    pets_unique_ids = get_all_pets()
     
     if #pets_unique_ids == 0 then
         warn(string.format("❌ No pets found for %s!", username))
-        local reason = config.Neon and "No NEON pets found matching criteria" or "No NORMAL pets found matching criteria"
-        sendWebhook(username, 0, "Failed - No Pets Found", reason)
+        sendWebhook(string.format("❌ %s - No Pets Found", username))
         continue
     end
     
-    print(string.format("✅ Found %d pets to trade", #pets_unique_ids))
+    print(string.format("\n✅ Found %d total pets to trade", #pets_unique_ids))
     
+    -- Execute trades
     local totalTraded = #pets_unique_ids
     local tradesNeeded = math.ceil(#pets_unique_ids / 18)
     
@@ -349,7 +264,7 @@ for index, username in ipairs(config.usernames) do
         local maxAttempts = 50
         
         repeat
-            local success = autotrade(username, targetPetCount)
+            local success = autotrade(username)
             if not success and attempts > 10 then
                 warn("Trade failed after multiple attempts")
                 break
@@ -358,51 +273,44 @@ for index, username in ipairs(config.usernames) do
             attempts = attempts + 1
         until #pets_unique_ids == 0 or not Players:FindFirstChild(username) or attempts >= maxAttempts
         
+        -- Check if holder left
         if not Players:FindFirstChild(username) then
             warn(string.format("⚠️ %s left the game!", username))
-            sendWebhook(username, totalTraded - #pets_unique_ids, "Incomplete - Player Left")
+            sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d)", username, totalTraded - #pets_unique_ids))
             break
         end
         
         if attempts >= maxAttempts then
             warn("Max attempts reached")
-            sendWebhook(username, totalTraded - #pets_unique_ids, "Failed - Max Attempts")
+            sendWebhook(string.format("❌ %s - Failed - Max Attempts (Traded: %d)", username, totalTraded - #pets_unique_ids))
             break
         end
         
-        task.wait(3)
+        task.wait(3) -- Cooldown between trades
     end
     
+    -- Log completion
     if #pets_unique_ids == 0 then
         print(string.format("\n✅ Successfully traded %d pets with %s", totalTraded, username))
-        sendWebhook(username, totalTraded, "Success")
+        sendWebhook(string.format("✅ %s - COMPLETE - Traded: %d pets", username, totalTraded))
         table.insert(completedTrades, username)
         totalPetsTraded = totalPetsTraded + totalTraded
-        
-        if getgenv().ProgressUI then
-            getgenv().ProgressUI.UpdateProgress(index, #config.usernames, totalPetsTraded)
-        end
     end
     
-    task.wait(5)
+    task.wait(5) -- Cooldown before next holder
 end
 
 print("\n┌────────────────────────────────────┐")
 print("│ 🎉 All Trades Completed!           │")
-print(string.format("│ ✅ Success: %d/%d targets", #completedTrades, #config.usernames))
+print(string.format("│ ✅ Success: %d/%d holders", #completedTrades, #config.usernames))
 print(string.format("│ ✅ Total Pets Traded: %d", totalPetsTraded))
 print("└────────────────────────────────────┘\n")
 
-if getgenv().ProgressUI then
-    getgenv().ProgressUI.Complete()
-end
+-- Final webhook
+sendWebhook(string.format("✅ %s - ALL COMPLETE - Total Traded: %d pets", playerName, totalPetsTraded))
 
-if config.Webhook ~= "" then
-    sendWebhook("All Trades", totalPetsTraded, string.format("Completed %d/%d trades", #completedTrades, #config.usernames))
-end
-
--- Auto-disable account when complete
-print("\n🔴 Disabling account...")
+-- Auto-disable account
+print("🔴 Disabling account...")
 disableAccount()
 
 print("\n========================================")
