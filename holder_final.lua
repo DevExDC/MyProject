@@ -1,15 +1,12 @@
--- ULTRA PREMIUM HOLDER GUI
--- Created by DevEx - Maximum Premium Edition
+-- ============================================
+-- HOLDER GUI - PC SERVER VERSION
+-- Beautiful UI for managing pet trades
+-- ============================================
 
-print("===========================================")
-print("  ULTRA PREMIUM Pet Distribution System")
-print("  Created by DevEx")
-print("  Loading Legendary GUI...")
-print("===========================================")
+local PC_SERVER_URL = "http://localhost:8080" -- Built-in, no need to configure
 
--- Wait for game to load
 repeat task.wait() until game:IsLoaded()
-repeat task.wait(1) until game:IsLoaded() and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
 task.wait(2)
 
 local Players = game:GetService("Players")
@@ -19,92 +16,376 @@ local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 local holderName = LocalPlayer.Name
 
--- Create ScreenGui
+-- Dehash
+for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
+    v.Name = i
+end
+
+local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+
+-- State
+local isRunning = false
+local processedRequests = {}
+local currentQueue = {}
+local stats = {
+    completed = 0,
+    failed = 0,
+    total = 0
+}
+
+-- ============================================
+-- GUI CREATION
+-- ============================================
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "DevExPremiumGUI"
+ScreenGui.Name = "HolderGUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Parent = game:GetService("CoreGui")
 
--- Main Frame with Premium Design
+-- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 500, 0, 670)  -- Increased height for queue section
-MainFrame.Position = UDim2.new(0.5, -250, 0.5, -335)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 450, 0, 550)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -275)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = false
 MainFrame.Parent = ScreenGui
 
--- Animated Rainbow Gradient Border
-local BorderGradient = Instance.new("UIGradient")
-BorderGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 127)),
-    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(127, 0, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 127, 255)),
-    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 127)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 127))
-}
-BorderGradient.Rotation = 0
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
 
--- Animate rainbow gradient
-task.spawn(function()
-    while MainFrame.Parent do
-        for i = 0, 360, 1 do
-            if not MainFrame.Parent then break end
-            BorderGradient.Rotation = i
-            task.wait(0.02)
+local UIShadow = Instance.new("ImageLabel")
+UIShadow.Name = "Shadow"
+UIShadow.Size = UDim2.new(1, 30, 1, 30)
+UIShadow.Position = UDim2.new(0, -15, 0, -15)
+UIShadow.BackgroundTransparency = 1
+UIShadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+UIShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+UIShadow.ImageTransparency = 0.7
+UIShadow.ZIndex = 0
+UIShadow.Parent = MainFrame
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 50)
+TitleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = TitleBar
+
+local TitleCover = Instance.new("Frame")
+TitleCover.Size = UDim2.new(1, 0, 0, 25)
+TitleCover.Position = UDim2.new(0, 0, 1, -25)
+TitleCover.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+TitleCover.BorderSizePixel = 0
+TitleCover.Parent = TitleBar
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -20, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "💰 DevEx Holder System"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 20
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+-- Close Button
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 40, 0, 40)
+CloseButton.Position = UDim2.new(1, -45, 0, 5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseButton.Text = "✕"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 20
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Parent = TitleBar
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseButton
+
+-- Content Frame
+local ContentFrame = Instance.new("ScrollingFrame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -20, 1, -70)
+ContentFrame.Position = UDim2.new(0, 10, 0, 60)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.ScrollBarThickness = 4
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 700)
+ContentFrame.Parent = MainFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 10)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentFrame
+
+-- Helper function to create sections
+local function createSection(name, layoutOrder)
+    local Section = Instance.new("Frame")
+    Section.Name = name .. "Section"
+    Section.Size = UDim2.new(1, 0, 0, 60)
+    Section.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    Section.BorderSizePixel = 0
+    Section.LayoutOrder = layoutOrder
+    Section.Parent = ContentFrame
+    
+    local SectionCorner = Instance.new("UICorner")
+    SectionCorner.CornerRadius = UDim.new(0, 8)
+    SectionCorner.Parent = Section
+    
+    return Section
+end
+
+-- Helper function to create textbox
+local function createTextbox(parent, placeholderText, defaultText)
+    local TextBox = Instance.new("TextBox")
+    TextBox.Size = UDim2.new(1, -20, 0, 40)
+    TextBox.Position = UDim2.new(0, 10, 0, 10)
+    TextBox.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    TextBox.PlaceholderText = placeholderText
+    TextBox.Text = defaultText or ""
+    TextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TextBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+    TextBox.TextSize = 14
+    TextBox.Font = Enum.Font.Gotham
+    TextBox.ClearTextOnFocus = false
+    TextBox.Parent = parent
+    
+    local BoxCorner = Instance.new("UICorner")
+    BoxCorner.CornerRadius = UDim.new(0, 6)
+    BoxCorner.Parent = TextBox
+    
+    return TextBox
+end
+
+-- Pet Kind Section
+local PetKindSection = createSection("PetKind", 1)
+local PetKindBox = createTextbox(PetKindSection, "Pet Remote ID (e.g., moon_2025_snorgle)", "")
+
+-- Rarity Section  
+local RaritySection = createSection("Rarity", 2)
+RaritySection.Size = UDim2.new(1, 0, 0, 110)
+
+local RarityLabel = Instance.new("TextLabel")
+RarityLabel.Size = UDim2.new(1, -20, 0, 20)
+RarityLabel.Position = UDim2.new(0, 10, 0, 10)
+RarityLabel.BackgroundTransparency = 1
+RarityLabel.Text = "Rarity Filter:"
+RarityLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+RarityLabel.TextSize = 13
+RarityLabel.Font = Enum.Font.Gotham
+RarityLabel.TextXAlignment = Enum.TextXAlignment.Left
+RarityLabel.Parent = RaritySection
+
+local rarities = {"All", "Common", "Uncommon", "Rare", "Ultra Rare", "Legendary"}
+local selectedRarity = "All"
+local rarityButtons = {}
+
+local RarityGrid = Instance.new("Frame")
+RarityGrid.Size = UDim2.new(1, -20, 0, 70)
+RarityGrid.Position = UDim2.new(0, 10, 0, 35)
+RarityGrid.BackgroundTransparency = 1
+RarityGrid.Parent = RaritySection
+
+local GridLayout = Instance.new("UIGridLayout")
+GridLayout.CellSize = UDim2.new(0, 130, 0, 30)
+GridLayout.CellPadding = UDim2.new(0, 5, 0, 5)
+GridLayout.Parent = RarityGrid
+
+for _, rarity in ipairs(rarities) do
+    local RarityBtn = Instance.new("TextButton")
+    RarityBtn.Name = rarity
+    RarityBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    RarityBtn.Text = rarity
+    RarityBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    RarityBtn.TextSize = 12
+    RarityBtn.Font = Enum.Font.Gotham
+    RarityBtn.Parent = RarityGrid
+    
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = RarityBtn
+    
+    rarityButtons[rarity] = RarityBtn
+    
+    RarityBtn.MouseButton1Click:Connect(function()
+        selectedRarity = rarity
+        for name, btn in pairs(rarityButtons) do
+            if name == rarity then
+                btn.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+                btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+            end
         end
+    end)
+end
+
+-- Set default
+rarityButtons["All"].BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+rarityButtons["All"].TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- Neon Toggle Section
+local NeonSection = createSection("Neon", 3)
+NeonSection.Size = UDim2.new(1, 0, 0, 60)
+
+local NeonToggle = Instance.new("TextButton")
+NeonToggle.Size = UDim2.new(0, 60, 0, 40)
+NeonToggle.Position = UDim2.new(1, -70, 0, 10)
+NeonToggle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+NeonToggle.Text = ""
+NeonToggle.Parent = NeonSection
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = NeonToggle
+
+local ToggleCircle = Instance.new("Frame")
+ToggleCircle.Size = UDim2.new(0, 32, 0, 32)
+ToggleCircle.Position = UDim2.new(0, 4, 0.5, -16)
+ToggleCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ToggleCircle.BorderSizePixel = 0
+ToggleCircle.Parent = NeonToggle
+
+local CircleCorner = Instance.new("UICorner")
+CircleCorner.CornerRadius = UDim.new(1, 0)
+CircleCorner.Parent = ToggleCircle
+
+local NeonLabel = Instance.new("TextLabel")
+NeonLabel.Size = UDim2.new(1, -80, 1, 0)
+NeonLabel.Position = UDim2.new(0, 10, 0, 0)
+NeonLabel.BackgroundTransparency = 1
+NeonLabel.Text = "Neon/Mega Only"
+NeonLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+NeonLabel.TextSize = 14
+NeonLabel.Font = Enum.Font.Gotham
+NeonLabel.TextXAlignment = Enum.TextXAlignment.Left
+NeonLabel.Parent = NeonSection
+
+local neonEnabled = false
+
+NeonToggle.MouseButton1Click:Connect(function()
+    neonEnabled = not neonEnabled
+    
+    if neonEnabled then
+        TweenService:Create(NeonToggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(76, 175, 80)}):Play()
+        TweenService:Create(ToggleCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -36, 0.5, -16)}):Play()
+    else
+        TweenService:Create(NeonToggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(100, 100, 100)}):Play()
+        TweenService:Create(ToggleCircle, TweenInfo.new(0.2), {Position = UDim2.new(0, 4, 0.5, -16)}):Play()
     end
 end)
 
--- Border Frame (Rainbow outline)
-local BorderFrame = Instance.new("Frame")
-BorderFrame.Size = UDim2.new(1, 6, 1, 6)
-BorderFrame.Position = UDim2.new(0, -3, 0, -3)
-BorderFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-BorderFrame.BorderSizePixel = 0
-BorderFrame.ZIndex = 0
-BorderFrame.Parent = MainFrame
+-- Queue Section
+local QueueSection = createSection("Queue", 4)
+QueueSection.Size = UDim2.new(1, 0, 0, 150)
 
-local BorderCorner = Instance.new("UICorner")
-BorderCorner.CornerRadius = UDim.new(0, 18)
-BorderCorner.Parent = BorderFrame
+local QueueLabel = Instance.new("TextLabel")
+QueueLabel.Size = UDim2.new(1, -20, 0, 25)
+QueueLabel.Position = UDim2.new(0, 10, 0, 10)
+QueueLabel.BackgroundTransparency = 1
+QueueLabel.Text = "📋 Trade Queue (0)"
+QueueLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+QueueLabel.TextSize = 14
+QueueLabel.Font = Enum.Font.GothamBold
+QueueLabel.TextXAlignment = Enum.TextXAlignment.Left
+QueueLabel.Parent = QueueSection
 
-BorderGradient.Parent = BorderFrame
+local QueueScroll = Instance.new("ScrollingFrame")
+QueueScroll.Size = UDim2.new(1, -20, 1, -45)
+QueueScroll.Position = UDim2.new(0, 10, 0, 35)
+QueueScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+QueueScroll.BorderSizePixel = 0
+QueueScroll.ScrollBarThickness = 3
+QueueScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+QueueScroll.Parent = QueueSection
 
--- Outer Glow Effect
-local OuterGlow = Instance.new("ImageLabel")
-OuterGlow.Size = UDim2.new(1, 60, 1, 60)
-OuterGlow.Position = UDim2.new(0, -30, 0, -30)
-OuterGlow.BackgroundTransparency = 1
-OuterGlow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-OuterGlow.ImageColor3 = Color3.fromRGB(127, 0, 255)
-OuterGlow.ImageTransparency = 0.3
-OuterGlow.ScaleType = Enum.ScaleType.Slice
-OuterGlow.SliceCenter = Rect.new(10, 10, 118, 118)
-OuterGlow.ZIndex = -1
-OuterGlow.Parent = MainFrame
+local QueueCorner = Instance.new("UICorner")
+QueueCorner.CornerRadius = UDim.new(0, 6)
+QueueCorner.Parent = QueueScroll
 
--- Pulsing glow animation
-task.spawn(function()
-    while OuterGlow.Parent do
-        TweenService:Create(OuterGlow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), 
-            {ImageTransparency = 0.6}):Play()
-        task.wait(2)
-    end
-end)
+local QueueLayout = Instance.new("UIListLayout")
+QueueLayout.Padding = UDim.new(0, 3)
+QueueLayout.Parent = QueueScroll
 
--- Corner rounding for main frame
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 15)
-MainCorner.Parent = MainFrame
+-- Stats Section
+local StatsSection = createSection("Stats", 5)
+StatsSection.Size = UDim2.new(1, 0, 0, 80)
+
+local StatsGrid = Instance.new("Frame")
+StatsGrid.Size = UDim2.new(1, -20, 1, -20)
+StatsGrid.Position = UDim2.new(0, 10, 0, 10)
+StatsGrid.BackgroundTransparency = 1
+StatsGrid.Parent = StatsSection
+
+local StatsLayout = Instance.new("UIGridLayout")
+StatsLayout.CellSize = UDim2.new(0.33, -7, 0, 25)
+StatsLayout.CellPadding = UDim2.new(0, 5, 0, 5)
+StatsLayout.Parent = StatsGrid
+
+local function createStatLabel(text)
+    local Label = Instance.new("TextLabel")
+    Label.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Label.TextSize = 12
+    Label.Font = Enum.Font.Gotham
+    Label.Parent = StatsGrid
+    
+    local LabelCorner = Instance.new("UICorner")
+    LabelCorner.CornerRadius = UDim.new(0, 6)
+    LabelCorner.Parent = Label
+    
+    return Label
+end
+
+local CompletedLabel = createStatLabel("✅ Completed: 0")
+local FailedLabel = createStatLabel("❌ Failed: 0")
+local TotalLabel = createStatLabel("📊 Total: 0")
+
+-- Start Button
+local StartButton = Instance.new("TextButton")
+StartButton.Name = "StartButton"
+StartButton.Size = UDim2.new(1, -20, 0, 50)
+StartButton.Position = UDim2.new(0, 10, 0, 0)
+StartButton.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+StartButton.Text = "▶️ START MONITORING"
+StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartButton.TextSize = 16
+StartButton.Font = Enum.Font.GothamBold
+StartButton.LayoutOrder = 6
+StartButton.Parent = ContentFrame
+
+local StartCorner = Instance.new("UICorner")
+StartCorner.CornerRadius = UDim.new(0, 8)
+StartCorner.Parent = StartButton
+
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 30)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "⏸️ Idle - Click START to begin"
+StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.LayoutOrder = 7
+StatusLabel.Parent = ContentFrame
 
 -- Make draggable
-local dragging = false
-local dragStart = nil
-local startPos = nil
+local dragging, dragInput, dragStart, startPos
 
-MainFrame.InputBegan:Connect(function(input)
+TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
@@ -112,994 +393,270 @@ MainFrame.InputBegan:Connect(function(input)
     end
 end)
 
-MainFrame.InputEnded:Connect(function(input)
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+TitleBar.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = false
     end
 end)
 
 game:GetService("UserInputService").InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
-end)
-
--- Content Background with animated gradient
-local ContentBG = Instance.new("Frame")
-ContentBG.Size = UDim2.new(1, 0, 1, 0)
-ContentBG.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-ContentBG.BorderSizePixel = 0
-ContentBG.Parent = MainFrame
-
-local ContentCorner = Instance.new("UICorner")
-ContentCorner.CornerRadius = UDim.new(0, 15)
-ContentCorner.Parent = ContentBG
-
-local ContentGradient = Instance.new("UIGradient")
-ContentGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 15, 45)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 25, 50)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 15, 40))
-}
-ContentGradient.Rotation = 45
-ContentGradient.Parent = ContentBG
-
--- Animate content gradient
-task.spawn(function()
-    while ContentGradient.Parent do
-        for i = 0, 360, 2 do
-            if not ContentGradient.Parent then break end
-            ContentGradient.Rotation = i
-            task.wait(0.05)
-        end
-    end
-end)
-
--- Header Section
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 100)
-Header.BackgroundColor3 = Color3.fromRGB(15, 10, 30)
-Header.BackgroundTransparency = 0.3
-Header.BorderSizePixel = 0
-Header.Parent = ContentBG
-
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 15)
-HeaderCorner.Parent = Header
-
--- Pet Icon (Adopt Me style dog)
-local PetIcon = Instance.new("TextLabel")
-PetIcon.Size = UDim2.new(0, 70, 0, 70)
-PetIcon.Position = UDim2.new(0, 15, 0, 15)
-PetIcon.BackgroundColor3 = Color3.fromRGB(40, 20, 80)
-PetIcon.BorderSizePixel = 0
-PetIcon.Text = "🐕"
-PetIcon.TextSize = 40
-PetIcon.Font = Enum.Font.GothamBold
-PetIcon.Parent = Header
-
-local IconCorner = Instance.new("UICorner")
-IconCorner.CornerRadius = UDim.new(0, 12)
-IconCorner.Parent = PetIcon
-
-local IconGradient = Instance.new("UIGradient")
-IconGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 40, 160)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(160, 80, 200))
-}
-IconGradient.Rotation = 45
-IconGradient.Parent = PetIcon
-
--- Icon float animation
-task.spawn(function()
-    while PetIcon.Parent do
-        TweenService:Create(PetIcon, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), 
-            {Position = UDim2.new(0, 15, 0, 20)}):Play()
-        task.wait(2)
-    end
-end)
-
--- Icon rotation
-task.spawn(function()
-    while PetIcon.Parent do
-        for i = -10, 10, 1 do
-            if not PetIcon.Parent then break end
-            PetIcon.Rotation = i
-            task.wait(0.05)
-        end
-        for i = 10, -10, -1 do
-            if not PetIcon.Parent then break end
-            PetIcon.Rotation = i
-            task.wait(0.05)
-        end
-    end
-end)
-
--- Title with premium font
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -200, 0, 35)
-Title.Position = UDim2.new(0, 95, 0, 15)
-Title.BackgroundTransparency = 1
-Title.Text = "Pet Distribution"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 28
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.TextStrokeTransparency = 0.5
-Title.TextStrokeColor3 = Color3.fromRGB(127, 0, 255)
-Title.Parent = Header
-
-local TitleGradient = Instance.new("UIGradient")
-TitleGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 150, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-}
-TitleGradient.Parent = Title
-
--- Subtitle - Holder
-local Subtitle = Instance.new("TextLabel")
-Subtitle.Size = UDim2.new(1, -200, 0, 20)
-Subtitle.Position = UDim2.new(0, 95, 0, 48)
-Subtitle.BackgroundTransparency = 1
-Subtitle.Text = "⚡ Holder Account"
-Subtitle.TextColor3 = Color3.fromRGB(200, 180, 255)
-Subtitle.TextSize = 14
-Subtitle.Font = Enum.Font.GothamBold
-Subtitle.TextXAlignment = Enum.TextXAlignment.Left
-Subtitle.Parent = Header
-
--- Created by DevEx badge
-local CreatedBy = Instance.new("TextLabel")
-CreatedBy.Size = UDim2.new(0, 180, 0, 25)
-CreatedBy.Position = UDim2.new(0, 95, 0, 68)
-CreatedBy.BackgroundColor3 = Color3.fromRGB(40, 20, 80)
-CreatedBy.BorderSizePixel = 0
-CreatedBy.Text = "✨ Created by DevEx"
-CreatedBy.TextColor3 = Color3.fromRGB(255, 215, 0)
-CreatedBy.TextSize = 12
-CreatedBy.Font = Enum.Font.GothamBold
-CreatedBy.Parent = Header
-
-local CreatedCorner = Instance.new("UICorner")
-CreatedCorner.CornerRadius = UDim.new(0, 6)
-CreatedCorner.Parent = CreatedBy
-
-local CreatedGradient = Instance.new("UIGradient")
-CreatedGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 30, 120)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 50, 150))
-}
-CreatedGradient.Rotation = 90
-CreatedGradient.Parent = CreatedBy
-
--- Spinning money icon in top right
-local MoneyIcon = Instance.new("TextLabel")
-MoneyIcon.Size = UDim2.new(0, 50, 0, 50)
-MoneyIcon.Position = UDim2.new(1, -115, 0, 10)
-MoneyIcon.BackgroundTransparency = 1
-MoneyIcon.Text = "💰"
-MoneyIcon.TextSize = 40
-MoneyIcon.Font = Enum.Font.GothamBold
-MoneyIcon.Parent = Header
-
-task.spawn(function()
-    while MoneyIcon.Parent do
-        for i = 0, 360, 4 do
-            if not MoneyIcon.Parent then break end
-            MoneyIcon.Rotation = i
-            task.wait(0.01)
-        end
-    end
-end)
-
--- Close Button (Premium style)
-local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.new(0, 40, 0, 40)
-CloseButton.Position = UDim2.new(1, -50, 0, 10)
-CloseButton.BackgroundColor3 = Color3.fromRGB(200, 40, 60)
-CloseButton.BorderSizePixel = 0
-CloseButton.Text = "X"  -- Changed from ✕ to X
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 22
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Parent = Header
-
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(1, 0)
-CloseCorner.Parent = CloseButton
-
-local CloseGradient = Instance.new("UIGradient")
-CloseGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 60, 80)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 40, 60))
-}
-CloseGradient.Rotation = 90
-CloseGradient.Parent = CloseButton
-
-CloseButton.MouseEnter:Connect(function()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {Size = UDim2.new(0, 45, 0, 45), Rotation = 90}):Play()
-end)
-
-CloseButton.MouseLeave:Connect(function()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {Size = UDim2.new(0, 40, 0, 40), Rotation = 0}):Play()
 end)
 
 CloseButton.MouseButton1Click:Connect(function()
-    TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), 
-        {Size = UDim2.new(0, 0, 0, 0), Rotation = 180}):Play()
-    TweenService:Create(MainFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-    task.wait(0.5)
     ScreenGui:Destroy()
 end)
 
--- Content Container (Changed from ScrollingFrame to Frame)
-local Container = Instance.new("Frame")
-Container.Size = UDim2.new(1, -40, 1, -130)
-Container.Position = UDim2.new(0, 20, 0, 110)
-Container.BackgroundTransparency = 1
-Container.BorderSizePixel = 0
-Container.ClipsDescendants = true
-Container.Parent = ContentBG
+-- ============================================
+-- BACKEND FUNCTIONS
+-- ============================================
 
--- Pet Remote ID Section
-local PetSection = Instance.new("Frame")
-PetSection.Size = UDim2.new(1, 0, 0, 90)
-PetSection.BackgroundTransparency = 1
-PetSection.Parent = Container
-
-local PetLabel = Instance.new("TextLabel")
-PetLabel.Size = UDim2.new(1, 0, 0, 25)
-PetLabel.BackgroundTransparency = 1
-PetLabel.Text = "🐾 Pet Remote ID"
-PetLabel.TextColor3 = Color3.fromRGB(220, 200, 255)
-PetLabel.TextSize = 16
-PetLabel.Font = Enum.Font.GothamBold
-PetLabel.TextXAlignment = Enum.TextXAlignment.Left
-PetLabel.TextStrokeTransparency = 0.8
-PetLabel.Parent = PetSection
-
-local PetInput = Instance.new("TextBox")
-PetInput.Size = UDim2.new(1, 0, 0, 45)
-PetInput.Position = UDim2.new(0, 0, 0, 30)
-PetInput.BackgroundColor3 = Color3.fromRGB(30, 20, 50)
-PetInput.BorderColor3 = Color3.fromRGB(100, 50, 200)
-PetInput.BorderSizePixel = 3
-PetInput.PlaceholderText = "Enter pet remote ID..."
-PetInput.PlaceholderColor3 = Color3.fromRGB(100, 80, 150)
-PetInput.Text = "moon_2025_snorgle"
-PetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-PetInput.TextSize = 15
-PetInput.Font = Enum.Font.GothamBold
-PetInput.Parent = PetSection
-
-local PetCorner = Instance.new("UICorner")
-PetCorner.CornerRadius = UDim.new(0, 10)
-PetCorner.Parent = PetInput
-
-local PetGradient = Instance.new("UIGradient")
-PetGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 20, 50)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 25, 60))
-}
-PetGradient.Rotation = 90
-PetGradient.Parent = PetInput
-
-PetInput.Focused:Connect(function()
-    TweenService:Create(PetInput, TweenInfo.new(0.3), {
-        BorderColor3 = Color3.fromRGB(180, 100, 255),
-        Size = UDim2.new(1, 5, 0, 48)
-    }):Play()
-end)
-
-PetInput.FocusLost:Connect(function()
-    TweenService:Create(PetInput, TweenInfo.new(0.3), {
-        BorderColor3 = Color3.fromRGB(100, 50, 200),
-        Size = UDim2.new(1, 0, 0, 45)
-    }):Play()
-end)
-
--- Rarity Section
-local RaritySection = Instance.new("Frame")
-RaritySection.Size = UDim2.new(1, 0, 0, 90)
-RaritySection.Position = UDim2.new(0, 0, 0, 100)
-RaritySection.BackgroundTransparency = 1
-RaritySection.Parent = Container
-
-local RarityLabel = Instance.new("TextLabel")
-RarityLabel.Size = UDim2.new(1, 0, 0, 25)
-RarityLabel.BackgroundTransparency = 1
-RarityLabel.Text = "✨ Pet Rarity"
-RarityLabel.TextColor3 = Color3.fromRGB(220, 200, 255)
-RarityLabel.TextSize = 16
-RarityLabel.Font = Enum.Font.GothamBold
-RarityLabel.TextXAlignment = Enum.TextXAlignment.Left
-RarityLabel.TextStrokeTransparency = 0.8
-RarityLabel.Parent = RaritySection
-
-local RarityButton = Instance.new("TextButton")
-RarityButton.Size = UDim2.new(1, 0, 0, 45)
-RarityButton.Position = UDim2.new(0, 0, 0, 30)
-RarityButton.BackgroundColor3 = Color3.fromRGB(30, 20, 50)
-RarityButton.BorderColor3 = Color3.fromRGB(100, 50, 200)
-RarityButton.BorderSizePixel = 3
-RarityButton.Text = "Uncommon ▼"
-RarityButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-RarityButton.TextSize = 15
-RarityButton.Font = Enum.Font.GothamBold
-RarityButton.Parent = RaritySection
-
-local RarityCorner = Instance.new("UICorner")
-RarityCorner.CornerRadius = UDim.new(0, 10)
-RarityCorner.Parent = RarityButton
-
-local RarityGradient = Instance.new("UIGradient")
-RarityGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 20, 50)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 25, 60))
-}
-RarityGradient.Rotation = 90
-RarityGradient.Parent = RarityButton
-
-local rarities = {"Common", "Uncommon", "Rare", "Ultra-Rare", "Legendary"}
-local currentRarity = 2
-
-RarityButton.MouseEnter:Connect(function()
-    TweenService:Create(RarityButton, TweenInfo.new(0.2), {Size = UDim2.new(1, 5, 0, 48)}):Play()
-end)
-
-RarityButton.MouseLeave:Connect(function()
-    TweenService:Create(RarityButton, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 45)}):Play()
-end)
-
-RarityButton.MouseButton1Click:Connect(function()
-    currentRarity = currentRarity + 1
-    if currentRarity > #rarities then currentRarity = 1 end
-    RarityButton.Text = rarities[currentRarity] .. " ▼"
-    
-    -- Flash effect
-    local flash = TweenService:Create(RarityGradient, TweenInfo.new(0.2), {
-        Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 80, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 100, 255))
-        }
-    })
-    flash:Play()
-    flash.Completed:Connect(function()
-        TweenService:Create(RarityGradient, TweenInfo.new(0.3), {
-            Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 20, 50)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 25, 60))
-            }
-        }):Play()
-    end)
-end)
-
--- Neon Toggle Section
-local NeonSection = Instance.new("Frame")
-NeonSection.Size = UDim2.new(1, 0, 0, 55)
-NeonSection.Position = UDim2.new(0, 0, 0, 200)
-NeonSection.BackgroundTransparency = 1
-NeonSection.Parent = Container
-
-local NeonToggle = Instance.new("TextButton")
-NeonToggle.Size = UDim2.new(1, 0, 0, 50)
-NeonToggle.BackgroundColor3 = Color3.fromRGB(40, 30, 60)
-NeonToggle.BorderSizePixel = 0
-NeonToggle.Text = "🔘 Normals Only"
-NeonToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-NeonToggle.TextSize = 17
-NeonToggle.Font = Enum.Font.GothamBold
-NeonToggle.Parent = NeonSection
-
-local NeonCorner = Instance.new("UICorner")
-NeonCorner.CornerRadius = UDim.new(0, 12)
-NeonCorner.Parent = NeonToggle
-
-local NeonGradient = Instance.new("UIGradient")
-NeonGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 40, 70)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 50, 80))
-}
-NeonGradient.Rotation = 90
-NeonGradient.Parent = NeonToggle
-
-local neonsOnly = false
-
-NeonToggle.MouseEnter:Connect(function()
-    TweenService:Create(NeonToggle, TweenInfo.new(0.2), {Size = UDim2.new(1, 8, 0, 53)}):Play()
-end)
-
-NeonToggle.MouseLeave:Connect(function()
-    TweenService:Create(NeonToggle, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 50)}):Play()
-end)
-
-NeonToggle.MouseButton1Click:Connect(function()
-    neonsOnly = not neonsOnly
-    if neonsOnly then
-        NeonToggle.Text = "✨ Neons Only"
-        NeonGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 50, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 100, 255))
-        }
-    else
-        NeonToggle.Text = "🔘 Normals Only"
-        NeonGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 40, 70)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 50, 80))
-        }
+local function updateQueue()
+    for _, child in pairs(QueueScroll:GetChildren()) do
+        if child:IsA("TextLabel") then
+            child:Destroy()
+        end
     end
     
-    -- Pulse animation
-    TweenService:Create(NeonToggle, TweenInfo.new(0.15), {Size = UDim2.new(1, 15, 0, 55)}):Play()
-    task.wait(0.15)
-    TweenService:Create(NeonToggle, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 50)}):Play()
-end)
-
--- Start Button (MEGA PREMIUM)
-local StartSection = Instance.new("Frame")
-StartSection.Size = UDim2.new(1, 0, 0, 70)
-StartSection.Position = UDim2.new(0, 0, 0, 265)
-StartSection.BackgroundTransparency = 1
-StartSection.Parent = Container
-
-local StartButton = Instance.new("TextButton")
-StartButton.Size = UDim2.new(1, 0, 0, 60)
-StartButton.BackgroundColor3 = Color3.fromRGB(40, 200, 100)
-StartButton.BorderSizePixel = 0
-StartButton.Text = "▶ START HOLDER"
-StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-StartButton.TextSize = 20
-StartButton.Font = Enum.Font.GothamBold
-StartButton.TextStrokeTransparency = 0.5
-StartButton.Parent = StartSection
-
-local StartCorner = Instance.new("UICorner")
-StartCorner.CornerRadius = UDim.new(0, 15)
-StartCorner.Parent = StartButton
-
-local StartGradient = Instance.new("UIGradient")
-StartGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 255, 120)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 200, 100)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 150, 80))
-}
-StartGradient.Rotation = 90
-StartGradient.Parent = StartButton
-
--- Mega glow effect
-local StartGlow = Instance.new("ImageLabel")
-StartGlow.Size = UDim2.new(1, 40, 1, 40)
-StartGlow.Position = UDim2.new(0, -20, 0, -20)
-StartGlow.BackgroundTransparency = 1
-StartGlow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-StartGlow.ImageColor3 = Color3.fromRGB(60, 255, 120)
-StartGlow.ImageTransparency = 1
-StartGlow.ScaleType = Enum.ScaleType.Slice
-StartGlow.SliceCenter = Rect.new(10, 10, 118, 118)
-StartGlow.ZIndex = 0
-StartGlow.Parent = StartButton
-
-StartButton.MouseEnter:Connect(function()
-    TweenService:Create(StartButton, TweenInfo.new(0.3), {Size = UDim2.new(1, 10, 0, 65)}):Play()
-    TweenService:Create(StartGlow, TweenInfo.new(0.4), {ImageTransparency = 0.5}):Play()
-    
-    -- Rainbow pulse
-    task.spawn(function()
-        while StartGlow.ImageTransparency < 0.9 do
-            for i = 0, 360, 20 do
-                if StartGlow.ImageTransparency >= 0.9 then break end
-                local hue = i / 360
-                StartGlow.ImageColor3 = Color3.fromHSV(hue, 1, 1)
-                task.wait(0.05)
-            end
-        end
-        StartGlow.ImageColor3 = Color3.fromRGB(60, 255, 120)
-    end)
-end)
-
-StartButton.MouseLeave:Connect(function()
-    TweenService:Create(StartButton, TweenInfo.new(0.3), {Size = UDim2.new(1, 0, 0, 60)}):Play()
-    TweenService:Create(StartGlow, TweenInfo.new(0.4), {ImageTransparency = 1}):Play()
-end)
-
--- Status Label (Premium style)
-local StatusSection = Instance.new("Frame")
-StatusSection.Size = UDim2.new(1, 0, 0, 60)
-StatusSection.Position = UDim2.new(0, 0, 0, 345)
-StatusSection.BackgroundColor3 = Color3.fromRGB(20, 15, 35)
-StatusSection.BackgroundTransparency = 0.5
-StatusSection.BorderSizePixel = 0
-StatusSection.Parent = Container
-
-local StatusCorner = Instance.new("UICorner")
-StatusCorner.CornerRadius = UDim.new(0, 10)
-StatusCorner.Parent = StatusSection
-
-local StatusIcon = Instance.new("TextLabel")
-StatusIcon.Size = UDim2.new(0, 40, 0, 40)
-StatusIcon.Position = UDim2.new(0, 10, 0, 10)
-StatusIcon.BackgroundTransparency = 1
-StatusIcon.Text = "⏸️"
-StatusIcon.TextSize = 28
-StatusIcon.Font = Enum.Font.GothamBold
-StatusIcon.Parent = StatusSection
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -60, 1, 0)
-StatusLabel.Position = UDim2.new(0, 55, 0, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Waiting to start..."
-StatusLabel.TextColor3 = Color3.fromRGB(180, 160, 200)
-StatusLabel.TextSize = 14
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatusLabel.TextYAlignment = Enum.TextYAlignment.Center
-StatusLabel.Parent = StatusSection
-
--- Queue & Progress Section
-local QueueSection = Instance.new("Frame")
-QueueSection.Size = UDim2.new(1, 0, 0, 120)
-QueueSection.Position = UDim2.new(0, 0, 0, 415)
-QueueSection.BackgroundColor3 = Color3.fromRGB(25, 20, 40)
-QueueSection.BackgroundTransparency = 0.3
-QueueSection.BorderSizePixel = 0
-QueueSection.Visible = false  -- Hidden until started
-QueueSection.Parent = Container
-
-local QueueCorner = Instance.new("UICorner")
-QueueCorner.CornerRadius = UDim.new(0, 12)
-QueueCorner.Parent = QueueSection
-
--- Queue Title
-local QueueTitle = Instance.new("TextLabel")
-QueueTitle.Size = UDim2.new(1, -20, 0, 25)
-QueueTitle.Position = UDim2.new(0, 10, 0, 10)
-QueueTitle.BackgroundTransparency = 1
-QueueTitle.Text = "📊 Queue & Progress"
-QueueTitle.TextColor3 = Color3.fromRGB(220, 200, 255)
-QueueTitle.TextSize = 15
-QueueTitle.Font = Enum.Font.GothamBold
-QueueTitle.TextXAlignment = Enum.TextXAlignment.Left
-QueueTitle.Parent = QueueSection
-
--- Stats Container
-local StatsContainer = Instance.new("Frame")
-StatsContainer.Size = UDim2.new(1, -20, 0, 80)
-StatsContainer.Position = UDim2.new(0, 10, 0, 35)
-StatsContainer.BackgroundTransparency = 1
-StatsContainer.Parent = QueueSection
-
--- Stat 1: Completed
-local CompletedStat = Instance.new("Frame")
-CompletedStat.Size = UDim2.new(0.33, -5, 1, 0)
-CompletedStat.Position = UDim2.new(0, 0, 0, 0)
-CompletedStat.BackgroundColor3 = Color3.fromRGB(30, 100, 60)
-CompletedStat.BorderSizePixel = 0
-CompletedStat.Parent = StatsContainer
-
-local CompletedCorner = Instance.new("UICorner")
-CompletedCorner.CornerRadius = UDim.new(0, 8)
-CompletedCorner.Parent = CompletedStat
-
-local CompletedGradient = Instance.new("UIGradient")
-CompletedGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 150, 80)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 100, 50))
-}
-CompletedGradient.Rotation = 90
-CompletedGradient.Parent = CompletedStat
-
-local CompletedLabel = Instance.new("TextLabel")
-CompletedLabel.Size = UDim2.new(1, 0, 0, 25)
-CompletedLabel.Position = UDim2.new(0, 0, 0, 10)
-CompletedLabel.BackgroundTransparency = 1
-CompletedLabel.Text = "✓ Completed"
-CompletedLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
-CompletedLabel.TextSize = 12
-CompletedLabel.Font = Enum.Font.GothamBold
-CompletedLabel.Parent = CompletedStat
-
-local CompletedValue = Instance.new("TextLabel")
-CompletedValue.Size = UDim2.new(1, 0, 0, 35)
-CompletedValue.Position = UDim2.new(0, 0, 0, 35)
-CompletedValue.BackgroundTransparency = 1
-CompletedValue.Text = "0"
-CompletedValue.TextColor3 = Color3.fromRGB(255, 255, 255)
-CompletedValue.TextSize = 24
-CompletedValue.Font = Enum.Font.GothamBold
-CompletedValue.Parent = CompletedStat
-
--- Stat 2: In Queue
-local QueueStat = Instance.new("Frame")
-QueueStat.Size = UDim2.new(0.33, -5, 1, 0)
-QueueStat.Position = UDim2.new(0.33, 2.5, 0, 0)
-QueueStat.BackgroundColor3 = Color3.fromRGB(80, 60, 150)
-QueueStat.BorderSizePixel = 0
-QueueStat.Parent = StatsContainer
-
-local QueueStatCorner = Instance.new("UICorner")
-QueueStatCorner.CornerRadius = UDim.new(0, 8)
-QueueStatCorner.Parent = QueueStat
-
-local QueueGradient = Instance.new("UIGradient")
-QueueGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 80, 200)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 60, 150))
-}
-QueueGradient.Rotation = 90
-QueueGradient.Parent = QueueStat
-
-local QueueStatLabel = Instance.new("TextLabel")
-QueueStatLabel.Size = UDim2.new(1, 0, 0, 25)
-QueueStatLabel.Position = UDim2.new(0, 0, 0, 10)
-QueueStatLabel.BackgroundTransparency = 1
-QueueStatLabel.Text = "⏳ In Queue"
-QueueStatLabel.TextColor3 = Color3.fromRGB(200, 180, 255)
-QueueStatLabel.TextSize = 12
-QueueStatLabel.Font = Enum.Font.GothamBold
-QueueStatLabel.Parent = QueueStat
-
-local QueueValue = Instance.new("TextLabel")
-QueueValue.Size = UDim2.new(1, 0, 0, 35)
-QueueValue.Position = UDim2.new(0, 0, 0, 35)
-QueueValue.BackgroundTransparency = 1
-QueueValue.Text = "0"
-QueueValue.TextColor3 = Color3.fromRGB(255, 255, 255)
-QueueValue.TextSize = 24
-QueueValue.Font = Enum.Font.GothamBold
-QueueValue.Parent = QueueStat
-
--- Stat 3: Total Scanned
-local ScannedStat = Instance.new("Frame")
-ScannedStat.Size = UDim2.new(0.33, -5, 1, 0)
-ScannedStat.Position = UDim2.new(0.66, 5, 0, 0)
-ScannedStat.BackgroundColor3 = Color3.fromRGB(60, 80, 150)
-ScannedStat.BorderSizePixel = 0
-ScannedStat.Parent = StatsContainer
-
-local ScannedCorner = Instance.new("UICorner")
-ScannedCorner.CornerRadius = UDim.new(0, 8)
-ScannedCorner.Parent = ScannedStat
-
-local ScannedGradient = Instance.new("UIGradient")
-ScannedGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 120, 200)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 80, 150))
-}
-ScannedGradient.Rotation = 90
-ScannedGradient.Parent = ScannedStat
-
-local ScannedLabel = Instance.new("TextLabel")
-ScannedLabel.Size = UDim2.new(1, 0, 0, 25)
-ScannedLabel.Position = UDim2.new(0, 0, 0, 10)
-ScannedLabel.BackgroundTransparency = 1
-ScannedLabel.Text = "👁️ Scanned"
-ScannedLabel.TextColor3 = Color3.fromRGB(180, 200, 255)
-ScannedLabel.TextSize = 12
-ScannedLabel.Font = Enum.Font.GothamBold
-ScannedLabel.Parent = ScannedStat
-
-local ScannedValue = Instance.new("TextLabel")
-ScannedValue.Size = UDim2.new(1, 0, 0, 35)
-ScannedValue.Position = UDim2.new(0, 0, 0, 35)
-ScannedValue.BackgroundTransparency = 1
-ScannedValue.Text = "0"
-ScannedValue.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScannedValue.TextSize = 24
-ScannedValue.Font = Enum.Font.GothamBold
-ScannedValue.Parent = ScannedStat
-
--- Animated status dots
-task.spawn(function()
-    local dots = 0
-    while StatusLabel.Parent do
-        if StatusLabel.Text:find("%.%.%.") then
-            dots = (dots + 1) % 4
-            StatusLabel.Text = StatusLabel.Text:gsub("%.+$", string.rep(".", dots))
-        end
-        task.wait(0.5)
+    for i, request in ipairs(currentQueue) do
+        local QueueItem = Instance.new("TextLabel")
+        QueueItem.Size = UDim2.new(1, -5, 0, 25)
+        QueueItem.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        QueueItem.Text = string.format("  %d. %s - %d pets", i, request.username, request.pets_needed)
+        QueueItem.TextColor3 = Color3.fromRGB(200, 200, 200)
+        QueueItem.TextSize = 11
+        QueueItem.Font = Enum.Font.Gotham
+        QueueItem.TextXAlignment = Enum.TextXAlignment.Left
+        QueueItem.Parent = QueueScroll
+        
+        local ItemCorner = Instance.new("UICorner")
+        ItemCorner.CornerRadius = UDim.new(0, 4)
+        ItemCorner.Parent = QueueItem
     end
-end)
-
--- Particles background effect
-local function createParticle()
-    local particle = Instance.new("Frame")
-    particle.Size = UDim2.new(0, math.random(2, 6), 0, math.random(2, 6))
-    particle.Position = UDim2.new(math.random(), 0, 1.1, 0)
-    particle.BackgroundColor3 = Color3.fromHSV(math.random(), 0.8, 1)
-    particle.BackgroundTransparency = 0.3
-    particle.BorderSizePixel = 0
-    particle.ZIndex = -1
-    particle.Parent = ContentBG
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = particle
-    
-    TweenService:Create(particle, TweenInfo.new(math.random(3, 6), Enum.EasingStyle.Linear), 
-        {Position = UDim2.new(math.random(), 0, -0.1, 0), BackgroundTransparency = 1}):Play()
-    
-    task.delay(6, function()
-        particle:Destroy()
-    end)
+    QueueScroll.CanvasSize = UDim2.new(0, 0, 0, #currentQueue * 28)
+    QueueLabel.Text = string.format("📋 Trade Queue (%d)", #currentQueue)
 end
 
--- Spawn particles
-task.spawn(function()
-    while ContentBG.Parent do
-        createParticle()
-        task.wait(0.3)
-    end
-end)
+local function updateStats()
+    CompletedLabel.Text = "✅ Completed: " .. stats.completed
+    FailedLabel.Text = "❌ Failed: " .. stats.failed
+    TotalLabel.Text = "📊 Total: " .. stats.total
+end
 
--- Entrance animation (EPIC)
-MainFrame.Size = UDim2.new(0, 0, 0, 0)
-MainFrame.Rotation = -180
-MainFrame.BackgroundTransparency = 1
-
-TweenService:Create(MainFrame, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.new(0, 500, 0, 670),  -- Updated to match new size
-    Rotation = 0,
-    BackgroundTransparency = 0
-}):Play()
-
-print("✅ ULTRA PREMIUM GUI Created!")
-
--- ============================================
--- HOLDER SCRIPT LOGIC (Same as before)
--- ============================================
-
-local scriptStarted = false
-
-StartButton.MouseButton1Click:Connect(function()
-    if scriptStarted then return end
-    scriptStarted = true
-    
-    -- Transform button
-    StartGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 100, 100)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 80))
-    }
-    StartButton.Text = "✓ RUNNING"
-    StatusIcon.Text = "🚀"
-    StatusLabel.Text = "Starting holder script..."
-    StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-    
-    -- Get config from GUI
-    local CONFIG = {
-        PET_REMOTE_ID = PetInput.Text,
-        RARITY = rarities[currentRarity]:lower(),
-        NEONS_ONLY = neonsOnly,
-        WEBHOOK_URL = ""
-    }
-    
-    print("\n===========================================")
-    print("  HOLDER STARTED")
-    print("  Created by DevEx")
-    print("===========================================")
-    print("Pet: " .. CONFIG.PET_REMOTE_ID)
-    print("Rarity: " .. CONFIG.RARITY:upper())
-    print("Neon Filter: " .. (CONFIG.NEONS_ONLY and "NEONS ONLY" or "NORMALS ONLY"))
-    print("===========================================")
-    
-    -- Dehash remotes
-    StatusIcon.Text = "🔧"
-    StatusLabel.Text = "Dehashing remotes..."
-    
-    for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
-        v.Name = i
-    end
-    
-    -- Enter game
-    StatusIcon.Text = "🏠"
-    StatusLabel.Text = "Entering game..."
-    
-    local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
-    local args = {[1] = "Parents", [2] = {["source_for_logging"] = "intro_sequence"}}
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer(unpack(args))
-    task.wait(1)
-    UIManager.set_app_visibility("MainMenuApp", false)
-    UIManager.set_app_visibility("NewsApp", false)
-    task.wait(2)
-    
-    -- [SAME LOGIC AS HOLDER_FINAL.lua - All the trading functions]
-    
-    local RARITY_COSTS = {
-        ["common"] = 1,
-        ["uncommon"] = 2,
-        ["rare"] = 2,
-        ["ultra-rare"] = 4,
-        ["legendary"] = 7
-    }
-    
-    local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
-    local processing = false
-    local processed_accounts = {}
-    
-    local function get_pet_uniques(count)
-        local playerData = Data.get_data()[holderName]
-        if not playerData or not playerData.inventory or not playerData.inventory.pets then return {} end
+local function get_pending_requests()
+    local success, result = pcall(function()
+        local response = request({
+            Url = PC_SERVER_URL .. "/requests",
+            Method = "GET"
+        })
         
-        local foundPets = {}
-        for _, pet in pairs(playerData.inventory.pets) do
-            if pet.kind == CONFIG.PET_REMOTE_ID and not pet.is_egg then
-                local petIsNeon = pet.properties and pet.properties.neon or false
-                if CONFIG.NEONS_ONLY then
-                    if petIsNeon then table.insert(foundPets, pet.unique) end
-                else
-                    if not petIsNeon then table.insert(foundPets, pet.unique) end
-                end
-                if #foundPets >= count then break end
-            end
-        end
-        return foundPets
-    end
-    
-    local function send_trade(username)
-        local target = Players:FindFirstChild(username)
-        if not target then return false end
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
-        return true
-    end
-    
-    local function add_items_in_trade(unique)
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
-    end
-    
-    local function first_trade_accept()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
-    end
-    
-    local function confirm_trade()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
-    end
-    
-    local function auto_trade(username, pets_unique_ids)
-        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-        local trade_status = false
-        local attempts = 0
-        
-        repeat
-            if #pets_unique_ids > 0 and not tradeGui.Visible then
-                trade_status = false
-                send_trade(username)
-                task.wait(2)
-            elseif not trade_status and tradeGui.Visible then
-                local counter = 0
-                while #pets_unique_ids > 0 and counter < 18 do
-                    add_items_in_trade(table.remove(pets_unique_ids, 1))
-                    counter = counter + 1
-                    task.wait(0.5)
-                end
-                trade_status = true
-                repeat
-                    task.wait(0.5)
-                    pcall(first_trade_accept)
-                    pcall(confirm_trade)
-                until not tradeGui.Visible
-                trade_status = false
-                if #pets_unique_ids > 0 then task.wait(2) end
-            else
-                task.wait(1)
-            end
-            attempts = attempts + 1
-            if attempts > 100 then break end
-        until #pets_unique_ids == 0
-        
-        return #pets_unique_ids == 0
-    end
-    
-    local function parseFile(content)
-        local data = {}
-        for line in content:gmatch("[^\n]+") do
-            local key, value = line:match("([^=]+)=(.+)")
-            if key and value then data[key] = tonumber(value) or value end
-        end
-        return data
-    end
-    
-    local function process_request(filename, requestData)
-        if processed_accounts[requestData.username] or processing then return end
-        processing = true
-        
-        StatusIcon.Text = "📋"
-        StatusLabel.Text = "Trading to " .. requestData.username .. "..."
-        
-        if not Players:FindFirstChild(requestData.username) then
-            processing = false
-            StatusLabel.Text = "⚠️ Player not in server"
-            return
+        if response.StatusCode == 200 then
+            return HttpService:JSONDecode(response.Body)
         end
         
-        local potion_cost = RARITY_COSTS[string.lower(CONFIG.RARITY)]
-        local pets_needed = math.floor(requestData.potions / potion_cost)
-        
-        if pets_needed == 0 then
-            processing = false
-            return
-        end
-        
-        local pets = get_pet_uniques(pets_needed)
-        if #pets == 0 then
-            processing = false
-            StatusIcon.Text = "❌"
-            StatusLabel.Text = "No pets found!"
-            return
-        end
-        
-        if auto_trade(requestData.username, pets) then
-            processed_accounts[requestData.username] = true
-            delfile(filename)
-            StatusIcon.Text = "✅"
-            StatusLabel.Text = "Traded " .. #pets .. " pets to " .. requestData.username
-        end
-        
-        processing = false
-    end
-    
-    -- Scanner
-    StatusIcon.Text = "🔍"
-    StatusLabel.Text = "Scanning for receiver files..."
-    QueueSection.Visible = true  -- Show queue section when started
-    
-    local totalScanned = 0
-    local queueList = {}  -- Track files in queue
-    
-    task.spawn(function()
-        while task.wait(3) do
-            if processing then continue end
-            
-            pcall(function()
-                -- Scan all players
-                totalScanned = 0
-                queueList = {}
-                
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player.Name == holderName then continue end
-                    
-                    totalScanned = totalScanned + 1
-                    
-                    if processed_accounts[player.Name] then continue end
-                    
-                    local filename = "receiver_" .. player.Name .. ".txt"
-                    if isfile(filename) then
-                        local content = readfile(filename)
-                        local requestData = parseFile(content)
-                        if requestData.username and requestData.potions and requestData.status == "pending" then
-                            table.insert(queueList, player.Name)
-                        end
-                    end
-                end
-                
-                -- Update stats
-                ScannedValue.Text = tostring(totalScanned)
-                QueueValue.Text = tostring(#queueList)
-                CompletedValue.Text = tostring(#processed_accounts)
-                
-                -- Process first in queue
-                if #queueList > 0 then
-                    local nextUser = queueList[1]
-                    local filename = "receiver_" .. nextUser .. ".txt"
-                    local content = readfile(filename)
-                    local requestData = parseFile(content)
-                    
-                    process_request(filename, requestData)
-                    task.wait(5)
-                end
-            end)
-            
-            if not processing then
-                StatusIcon.Text = "👀"
-                StatusLabel.Text = "Scanning... (" .. #processed_accounts .. " completed, " .. #queueList .. " in queue)"
-            end
-        end
+        return {}
     end)
+    
+    return success and result or {}
+end
+
+local function get_pets(count)
+    local playerData = Data.get_data()[holderName]
+    if not playerData or not playerData.inventory or not playerData.inventory.pets then
+        return {}
+    end
+    
+    local pets = {}
+    local petKind = PetKindBox.Text
+    
+    if petKind == "" then
+        return {}
+    end
+    
+    for _, pet in pairs(playerData.inventory.pets) do
+        if pet.kind == petKind then
+            local is_neon = pet.properties and pet.properties.neon
+            local is_mega = pet.properties and pet.properties.mega
+            
+            -- Neon filter
+            if neonEnabled then
+                if not (is_neon or is_mega) then
+                    continue
+                end
+            end
+            
+            -- Rarity filter (if not "All")
+            if selectedRarity ~= "All" then
+                local petRarity = pet.rarity or "common"
+                if selectedRarity:lower():gsub(" ", "_") ~= petRarity:lower() then
+                    continue
+                end
+            end
+            
+            table.insert(pets, pet.unique)
+            
+            if #pets >= count then
+                break
+            end
+        end
+    end
+    
+    return pets
+end
+
+local function send_trade(username)
+    local target = Players:FindFirstChild(username)
+    if not target then return false end
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
+    return true
+end
+
+local function add_pet(unique)
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
+end
+
+local function accept_trade()
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
+end
+
+local function confirm_trade()
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
+end
+
+local function trade_to_receiver(username, pet_count)
+    StatusLabel.Text = string.format("🔄 Trading %d pets to %s...", pet_count, username)
+    
+    if not Players:FindFirstChild(username) then
+        StatusLabel.Text = "❌ " .. username .. " not in server!"
+        return false
+    end
+    
+    local pets = get_pets(pet_count)
+    
+    if #pets < pet_count then
+        StatusLabel.Text = string.format("❌ Not enough pets! Have %d, need %d", #pets, pet_count)
+        return false
+    end
+    
+    if not send_trade(username) then
+        StatusLabel.Text = "❌ Failed to send trade request"
+        return false
+    end
+    
+    task.wait(3)
+    
+    local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+    
+    local timeout = 0
+    while not tradeGui.Visible and timeout < 10 do
+        task.wait(0.5)
+        timeout = timeout + 0.5
+    end
+    
+    if timeout >= 10 then
+        StatusLabel.Text = "❌ Trade window timeout"
+        return false
+    end
+    
+    for i, petUnique in ipairs(pets) do
+        add_pet(petUnique)
+        StatusLabel.Text = string.format("📦 Adding pets... (%d/%d)", i, #pets)
+        task.wait(0.5)
+    end
+    
+    task.wait(2)
+    accept_trade()
+    task.wait(2)
+    confirm_trade()
+    
+    timeout = 0
+    repeat
+        task.wait(0.5)
+        timeout = timeout + 0.5
+    until not tradeGui.Visible or timeout > 15
+    
+    if timeout > 15 then
+        StatusLabel.Text = "⚠️ Trade confirmation timeout"
+        return false
+    end
+    
+    StatusLabel.Text = "✅ Trade completed!"
+    return true
+end
+
+-- Main Loop
+local function mainLoop()
+    while isRunning do
+        task.wait(10)
+        
+        StatusLabel.Text = "📡 Checking for requests..."
+        
+        local requests = get_pending_requests()
+        currentQueue = {}
+        
+        for _, request in ipairs(requests) do
+            local username = request.username
+            local pets_needed = tonumber(request.pets_needed) or 0
+            
+            if not processedRequests[username] and pets_needed > 0 then
+                table.insert(currentQueue, request)
+            end
+        end
+        
+        updateQueue()
+        
+        if #currentQueue == 0 then
+            StatusLabel.Text = "⏳ Waiting for requests..."
+        else
+            for i, request in ipairs(currentQueue) do
+                stats.total = stats.total + 1
+                
+                local success = trade_to_receiver(request.username, request.pets_needed)
+                
+                if success then
+                    stats.completed = stats.completed + 1
+                    processedRequests[request.username] = true
+                else
+                    stats.failed = stats.failed + 1
+                end
+                
+                updateStats()
+                task.wait(5)
+            end
+        end
+    end
+end
+
+-- Start/Stop Button
+StartButton.MouseButton1Click:Connect(function()
+    if PetKindBox.Text == "" then
+        StatusLabel.Text = "❌ Please enter Pet Remote ID!"
+        return
+    end
+    
+    isRunning = not isRunning
+    
+    if isRunning then
+        StartButton.Text = "⏸️ STOP MONITORING"
+        StartButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+        StatusLabel.Text = "✅ Monitoring started!"
+        task.spawn(mainLoop)
+    else
+        StartButton.Text = "▶️ START MONITORING"
+        StartButton.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+        StatusLabel.Text = "⏸️ Monitoring stopped"
+    end
 end)
 
-print("✅ ULTRA PREMIUM GUI Ready!")
-print("Created by DevEx - Maximum Premium Edition")
+print("✅ Holder GUI Loaded!")
+print("💰 DevEx Holder System Ready")
