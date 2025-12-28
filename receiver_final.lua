@@ -49,6 +49,17 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
 
+-- ============== ANTI-AFK ==============
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("🔄 Anti-AFK triggered")
+end)
+print("✅ Anti-AFK enabled")
+
+print("Game loaded!")
+
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
@@ -194,7 +205,7 @@ local function setup_auto_accept(expected_pets)
             local was_visible = false
             local last_pet_count = initialPets
             local no_change_time = 0
-            local MAX_WAIT_TIME = 120 -- 2 minutes timeout
+            local MAX_WAIT_TIME = 1800 -- 30 minutes timeout
             
             while task.wait(0.5) do
                 pcall(function()
@@ -213,7 +224,7 @@ local function setup_auto_accept(expected_pets)
                         -- Check timeout
                         if no_change_time >= MAX_WAIT_TIME and not webhookSent then
                             local received = current - initialPets
-                            print(string.format("⏱️ TIMEOUT: No pets received for 2 minutes"))
+                            print(string.format("⏱️ TIMEOUT: No pets received for 30 minutes"))
                             print(string.format("   Final count: %d/%d pets", received, expected_pets))
                             
                             if received > 0 then
