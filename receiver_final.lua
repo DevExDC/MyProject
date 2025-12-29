@@ -1,14 +1,14 @@
 -- ============================================
--- RECEIVER - PC SERVER VERSION
--- Posts request to PC HTTP server instead of webhook
+-- RECEIVER - UPDATED WITH PROPER STARTER
+-- Smart pet detection + Status checking
 -- ============================================
 
 if not getgenv().ReceiverConfig then
     getgenv().ReceiverConfig = {
-        PC_SERVER_URL = "http://YOUR_PC_IP:8080/request",
+        PC_SERVER_URL = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
         WEBHOOK_URL = "",
-        RARITY = "uncommon",
-        PET_KIND = "winter_2025_christmas_spirit",  -- NEW: Specify which pet
+        RARITY = "legendary",
+        PET_KIND = "winter_2025_christmas_spirit",
         FARMSYNC_API_KEY = ""
     }
 end
@@ -16,7 +16,7 @@ end
 local CONFIG = getgenv().ReceiverConfig
 
 if CONFIG.PC_SERVER_URL == "" or CONFIG.PC_SERVER_URL:match("YOUR_PC_IP") then
-    error("❌ Set PC_SERVER_URL to your PC's IP!\nExample: http://192.168.1.100:8080/request")
+    error("❌ Set PC_SERVER_URL!")
 end
 
 if not CONFIG.RARITY or CONFIG.RARITY == "" then
@@ -63,21 +63,53 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
-print("Game loaded!")
-
+-- ============== DEHASH FIRST! ==============
+print("🔧 Dehashing remotes...")
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
+print("✅ Remotes dehashed!")
 
+-- ============== STARTER ==============
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
-ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", {["source_for_logging"] = "intro_sequence"})
-task.wait(1)
-UIManager.set_app_visibility("MainMenuApp", false)
-UIManager.set_app_visibility("NewsApp", false)
-task.wait(2)
+
+local function enter_the_game()
+    local function chooserole()
+        local args = {
+            [1] = "Parents",
+            [2] = {
+                ["source_for_logging"] = "intro_sequence",
+            },
+        }
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("API")
+            :WaitForChild("TeamAPI/ChooseTeam")
+            :InvokeServer(unpack(args))
+    end
+    chooserole()
+    task.wait(1)
+    local ui_stuff = require(game:GetService("ReplicatedStorage").Fsys).load("UIManager")
+    ui_stuff.set_app_visibility("MainMenuApp", false)
+    ui_stuff.set_app_visibility("NewsApp", false)
+    ui_stuff.set_app_visibility("DialogApp", false)
+    ui_stuff.set_app_visibility("MinigameRewardsApp", false)
+
+    task.wait(3)
+    game:GetService("ReplicatedStorage")
+        :WaitForChild("API")
+        :WaitForChild("DailyLoginAPI/ClaimDailyReward")
+        :InvokeServer()
+    ui_stuff.set_app_visibility("DailyLoginApp", false)
+end
+
+print("🎮 Entering game...")
+enter_the_game()
+print("✅ Game entered!")
+
+local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
 local function get_player_data()
-    return require(ReplicatedStorage.ClientModules.Core.ClientData).get_data()[tostring(LocalPlayer)]
+    return Data.get_data()[tostring(LocalPlayer)]
 end
 
 -- Send webhook (optional)
@@ -328,6 +360,8 @@ local function setup_auto_accept(expected_pets)
     end)
 end
 
+print("\n🔍 Analyzing inventory...")
+
 pcall(function()
     local potions = count_age_potions()
     
@@ -346,8 +380,8 @@ pcall(function()
         return
     end
     
-    -- NEW: Count existing pets of this kind
-    local existing_pets = count_specific_pets(CONFIG.PET_KIND or "")
+    -- Count existing pets of this kind
+    local existing_pets = count_specific_pets(CONFIG.PET_KIND)
     local pets_to_request = total_pets_needed - existing_pets
     
     print("\n📊 Calculation:")
@@ -369,7 +403,7 @@ pcall(function()
     end
     
     setup_auto_accept(pets_to_request)
-    post_to_pc_server(potions, pets_to_request)  -- POST ADJUSTED AMOUNT TO PC!
+    post_to_pc_server(potions, pets_to_request)
     
     print("\n✅ Waiting for " .. pets_to_request .. " pets (have " .. existing_pets .. " already)")
 end)
