@@ -187,9 +187,9 @@ local function setup_auto_accept(expected_pets)
         
         print("\n✅ Auto-accept system ready (no spawn mode)")
         
-        -- Phase 1: Auto-accept trade requests (ONCE per dialog)
+        -- Phase 1: Auto-accept trade requests (UNIVERSAL - from ANYONE)
         task.spawn(function()
-            print("✅ Phase 1: Dialog acceptor started")
+            print("✅ Phase 1: Universal dialog acceptor started")
             while task.wait(0.5) do
                 pcall(function()
                     local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
@@ -198,13 +198,21 @@ local function setup_auto_accept(expected_pets)
                         lastDialogVisible = true
                         print("\n📨 Trade request dialog detected!")
                         
+                        -- Accept from EVERYONE (don't check names)
                         for _, player in pairs(Players:GetPlayers()) do
-                            if player.Name ~= playerName then
+                            -- Accept from everyone EXCEPT ourselves
+                            if player ~= LocalPlayer then
                                 print("   Accepting from: " .. player.Name)
                                 local args = {player, true}
-                                ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(unpack(args))
-                                print("   ✅ Accept sent!")
-                                break
+                                local success = pcall(function()
+                                    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(unpack(args))
+                                end)
+                                if success then
+                                    print("   ✅ Accept sent to " .. player.Name .. "!")
+                                else
+                                    print("   ⚠️ Failed to send accept to " .. player.Name)
+                                end
+                                task.wait(0.3) -- Small delay between accepts
                             end
                         end
                     elseif not dialogVisible then
