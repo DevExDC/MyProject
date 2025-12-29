@@ -7,6 +7,7 @@ if not getgenv().AgingConfig then
     getgenv().AgingConfig = {
         PET_KIND = "winter_2025_christmas_spirit",
         RARITY = "legendary",
+        WEBHOOK_URL = "",  -- NEW: For Discord notifications
         FARMSYNC_API_KEY = ""
     }
 end
@@ -57,6 +58,42 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
+-- ============== STARTER - EXACT COPY FROM WORKING STARTER.LUA ==============
+local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
+
+local function enter_the_game()
+    local function chooserole()
+        local args = {
+            [1] = "Parents",
+            [2] = {
+                ["source_for_logging"] = "intro_sequence",
+            },
+        }
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("API")
+            :WaitForChild("TeamAPI/ChooseTeam")
+            :InvokeServer(unpack(args))
+    end
+    chooserole()
+    task.wait(1)
+    local ui_stuff = require(game:GetService("ReplicatedStorage").Fsys).load("UIManager")
+    ui_stuff.set_app_visibility("MainMenuApp", false)
+    ui_stuff.set_app_visibility("NewsApp", false)
+    ui_stuff.set_app_visibility("DialogApp", false)
+    ui_stuff.set_app_visibility("MinigameRewardsApp", false)
+
+    task.wait(3)
+    game:GetService("ReplicatedStorage")
+        :WaitForChild("API")
+        :WaitForChild("DailyLoginAPI/ClaimDailyReward")
+        :InvokeServer()
+    ui_stuff.set_app_visibility("DailyLoginApp", false)
+end
+
+print("🎮 Entering game...")
+enter_the_game()
+print("✅ Game entered!")
+
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
@@ -81,6 +118,20 @@ local function disableAccount()
             Body = HttpService:JSONEncode({enabled = false})
         })
         print("🔴 Account disabled!")
+    end)
+end
+
+-- Send webhook notification
+local function sendWebhook(message)
+    if CONFIG.WEBHOOK_URL == "" then return end
+    
+    pcall(function()
+        request({
+            Url = CONFIG.WEBHOOK_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode({["content"] = message})
+        })
     end)
 end
 
@@ -318,10 +369,13 @@ print(string.format("   Potions per pet: %d", potions_per_pet))
 
 if potions < potions_per_pet then
     print("\n❌ Not enough potions to age any pets!")
+    sendWebhook(string.format("❌ %s - Not enough potions (%d)", playerName, potions))
     print("   Disabling account...")
     disableAccount()
     return
 end
+
+sendWebhook(string.format("🔄 %s - Starting aging - Potions: %d", playerName, potions))
 
 -- PHASE 1: Age normal pets and create neons
 print("\n=== PHASE 1: Normal Pets → Neons ===")
@@ -379,6 +433,7 @@ while #full_grown >= 4 do
 end
 
 print(string.format("\n✅ Phase 1 complete: %d neons created", neons_created))
+sendWebhook(string.format("🌟 %s - Phase 1 done - Aged: %d pets, Neons: %d", playerName, aged_count, neons_created))
 
 -- Check for full grown neons and create MEGA
 if neons_created >= 4 then
@@ -406,6 +461,7 @@ if neons_created >= 4 then
     
     if megas_created > 0 then
         print(string.format("\n🎉 Created %d MEGA neon(s)!", megas_created))
+        sendWebhook(string.format("💎 %s - Created %d MEGA neon(s)!", playerName, megas_created))
     end
 else
     print("\n⚠️ Not enough neons for mega (need 4 full grown neons)")
@@ -444,6 +500,7 @@ if remaining_potions >= potions_per_pet then
     end
     
     print(string.format("✅ Used remaining potions on %d pets", to_age_extra))
+    sendWebhook(string.format("⚡ %s - Phase 2 done - Used remaining potions on %d pets", playerName, to_age_extra))
 else
     print(string.format("   Only %d potions left (need %d to age)", remaining_potions, potions_per_pet))
     print("   ✅ Not enough to age any more pets")
@@ -480,6 +537,8 @@ print(string.format("   Potions remaining: %d", final_potions))
 print(("="):rep(50))
 
 print("\n🔴 Disabling account...")
+sendWebhook(string.format("✅ %s - AGING COMPLETE - Aged: %d, Neons: %d, Megas: %d, Potions used: %d", 
+    playerName, aged_count, neons_created, final_megas, potions - final_potions))
 disableAccount()
 
 print("\n========================================")
