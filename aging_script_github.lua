@@ -65,36 +65,66 @@ for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.
 end
 print("✅ Remotes dehashed!")
 
--- ============== STARTER ==============
+-- ============== STARTER - CORRECT 3-PHASE SEQUENCE ==============
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 
 local function enter_the_game()
-    local function chooserole()
+    print("📍 Phase 1: Accepting terms...")
+    -- Phase 1: Accept terms (Click "Play")
+    pcall(function()
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("API")
+            :WaitForChild("MainMenuAPI/AcceptTermsOfServiceAndPrivacyPolicy")
+            :FireServer()
+    end)
+    task.wait(1)
+    
+    print("📍 Phase 2: Choosing team...")
+    -- Phase 2: Choose team (Click "Parents")
+    pcall(function()
         local args = {
-            [1] = "Parents",
-            [2] = {
-                ["source_for_logging"] = "intro_sequence",
-            },
+            "Parents",
+            {
+                source_for_logging = "intro_sequence",
+                dont_enter_location = true
+            }
         }
         game:GetService("ReplicatedStorage")
             :WaitForChild("API")
             :WaitForChild("TeamAPI/ChooseTeam")
             :InvokeServer(unpack(args))
-    end
-    chooserole()
+    end)
     task.wait(1)
-    local ui_stuff = require(game:GetService("ReplicatedStorage").Fsys).load("UIManager")
-    ui_stuff.set_app_visibility("MainMenuApp", false)
-    ui_stuff.set_app_visibility("NewsApp", false)
-    ui_stuff.set_app_visibility("DialogApp", false)
-    ui_stuff.set_app_visibility("MinigameRewardsApp", false)
-
-    task.wait(3)
-    game:GetService("ReplicatedStorage")
-        :WaitForChild("API")
-        :WaitForChild("DailyLoginAPI/ClaimDailyReward")
-        :InvokeServer()
-    ui_stuff.set_app_visibility("DailyLoginApp", false)
+    
+    print("📍 Phase 3: Spawning...")
+    -- Phase 3: Actually spawn
+    pcall(function()
+        local args = {"Home"}
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("API")
+            :WaitForChild("TradingServerAPI/IncrementConsecutiveSpawnCounter")
+            :FireServer(unpack(args))
+    end)
+    task.wait(2)
+    
+    -- Hide UI elements
+    UIManager.set_app_visibility("MainMenuApp", false)
+    UIManager.set_app_visibility("NewsApp", false)
+    UIManager.set_app_visibility("DialogApp", false)
+    UIManager.set_app_visibility("MinigameRewardsApp", false)
+    
+    task.wait(2)
+    
+    -- Claim daily reward
+    pcall(function()
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("API")
+            :WaitForChild("DailyLoginAPI/ClaimDailyReward")
+            :InvokeServer()
+        UIManager.set_app_visibility("DailyLoginApp", false)
+    end)
+    
+    print("✅ Fully spawned and ready!")
 end
 
 print("🎮 Entering game...")
@@ -332,7 +362,9 @@ sendWebhook(string.format("🔄 %s - Starting smart aging", playerName))
 
 -- CONTINUOUS LOOP UNTIL NO MORE WORK
 local cycle = 0
-while true do
+local MAX_CYCLES = 100  -- Safety limit
+
+while cycle < MAX_CYCLES do
     cycle = cycle + 1
     print(string.format("\n========== CYCLE %d ==========", cycle))
     
@@ -443,8 +475,21 @@ while true do
     -- If nothing left to do, exit loop
     if not did_something then
         print("\n✅ No more work to do!")
+        
+        local remaining_potions = count_age_potions()
+        if remaining_potions > 0 then
+            print(string.format("⚠️ WARNING: %d potions remaining (not enough to age)", remaining_potions))
+        end
+        
         break
     end
+end
+
+-- Check if hit max cycles (safety)
+if cycle >= MAX_CYCLES then
+    print("\n⚠️ WARNING: Hit max cycles limit (" .. MAX_CYCLES .. ")")
+    print("   Forcing completion to prevent infinite loop")
+    sendWebhook(string.format("⚠️ %s - Hit max cycles, forced completion", playerName))
 end
 
 -- Final summary
@@ -456,12 +501,11 @@ print(("="):rep(50))
 print(string.format("   Total pets aged: %d", total_aged))
 print(string.format("   Neons created: %d", total_neons_created))
 print(string.format("   Megas created: %d", total_megas_created))
-print(string.format("   Potions used: %d", count_age_potions() - final_potions))
 print(string.format("   Potions remaining: %d", final_potions))
 print(("="):rep(50))
 
-sendWebhook(string.format("✅ %s - AGING COMPLETE - Aged: %d, Neons: %d, Megas: %d", 
-    playerName, total_aged, total_neons_created, total_megas_created))
+sendWebhook(string.format("✅ %s - AGING COMPLETE - Aged: %d, Neons: %d, Megas: %d, Leftover: %d potions", 
+    playerName, total_aged, total_neons_created, total_megas_created, final_potions))
 
 print("\n🔴 Disabling account...")
 disableAccount()
