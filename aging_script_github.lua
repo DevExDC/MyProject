@@ -161,7 +161,8 @@ pcall(function()
     end
 end)
 
-task.wait(2)
+print("⏳ Waiting 10 seconds after unsubscribe...")
+task.wait(10)
 print("✅ Ready to start aging!")
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
