@@ -5,9 +5,10 @@
 
 if not getgenv().ReceiverConfig then
     getgenv().ReceiverConfig = {
-        PC_SERVER_URL = "http://YOUR_PC_IP:8080/request", -- Your PC's IP!
-        WEBHOOK_URL = "", -- Optional: for Discord notifications
+        PC_SERVER_URL = "http://YOUR_PC_IP:8080/request",
+        WEBHOOK_URL = "",
         RARITY = "uncommon",
+        PET_KIND = "winter_2025_christmas_spirit",  -- NEW: Specify which pet
         FARMSYNC_API_KEY = ""
     }
 end
@@ -20,6 +21,10 @@ end
 
 if not CONFIG.RARITY or CONFIG.RARITY == "" then
     error("❌ Set RARITY!")
+end
+
+if not CONFIG.PET_KIND or CONFIG.PET_KIND == "" then
+    error("❌ Set PET_KIND!")
 end
 
 local RARITY_AGE_UPS = {
@@ -147,6 +152,22 @@ local function count_age_potions()
         return count
     end)
     return success and result or 0
+end
+
+-- Count specific pet kind in inventory
+local function count_specific_pets(pet_kind)
+    local success, count = pcall(function()
+        local data = get_player_data()
+        if not data or not data.inventory or not data.inventory.pets then return 0 end
+        local total = 0
+        for _, pet in pairs(data.inventory.pets) do
+            if pet.kind == pet_kind then
+                total = total + 1
+            end
+        end
+        return total
+    end)
+    return success and count or 0
 end
 
 local function count_pets()
@@ -311,26 +332,46 @@ pcall(function()
     local potions = count_age_potions()
     
     if potions == 0 then
+        print("❌ No potions found, disabling account...")
         disableAccount()
         return
     end
     
     local age_ups = RARITY_AGE_UPS[rarity_lower]
-    local pets_needed = math.floor(potions / age_ups)
+    local total_pets_needed = math.floor(potions / age_ups)
     
-    if pets_needed == 0 then
+    if total_pets_needed == 0 then
+        print("❌ Not enough potions to age any pets, disabling...")
         disableAccount()
         return
     end
     
+    -- NEW: Count existing pets of this kind
+    local existing_pets = count_specific_pets(CONFIG.PET_KIND or "")
+    local pets_to_request = total_pets_needed - existing_pets
+    
     print("\n📊 Calculation:")
     print("   Potions: " .. potions)
-    print("   Pets needed: " .. pets_needed)
+    print("   Total pets needed: " .. total_pets_needed)
+    print("   Already have: " .. existing_pets)
+    print("   Will request: " .. pets_to_request)
     
-    setup_auto_accept(pets_needed)
-    post_to_pc_server(potions, pets_needed)  -- POST TO PC!
+    -- If already have enough or more, skip to aging!
+    if pets_to_request <= 0 then
+        print("\n✅ Already have enough pets (" .. existing_pets .. "/" .. total_pets_needed .. ")")
+        print("   Skipping holder request, proceeding to aging...")
+        
+        sendWebhook(string.format("✅ %s - Already has %d/%d pets - Skipping to aging", 
+            playerName, existing_pets, total_pets_needed))
+        
+        disableAccount()
+        return
+    end
     
-    print("\n✅ Waiting for " .. pets_needed .. " pets")
+    setup_auto_accept(pets_to_request)
+    post_to_pc_server(potions, pets_to_request)  -- POST ADJUSTED AMOUNT TO PC!
+    
+    print("\n✅ Waiting for " .. pets_to_request .. " pets (have " .. existing_pets .. " already)")
 end)
 
 while task.wait(10) do end
