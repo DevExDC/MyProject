@@ -131,9 +131,9 @@ print("🎮 Entering game...")
 enter_the_game()
 print("✅ Game entered!")
 
--- Wait 10 seconds then unsubscribe from house
-print("⏳ Waiting 10 seconds before unsubscribing from house...")
-task.wait(10)
+-- Wait 30 seconds then unsubscribe from house
+print("⏳ Waiting 30 seconds before unsubscribing from house...")
+task.wait(30)
 
 print("🏠 Unsubscribing from house...")
 pcall(function()
