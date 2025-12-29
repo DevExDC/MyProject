@@ -131,6 +131,39 @@ print("🎮 Entering game...")
 enter_the_game()
 print("✅ Game entered!")
 
+-- Wait 10 seconds then unsubscribe from house
+print("⏳ Waiting 10 seconds before unsubscribing from house...")
+task.wait(10)
+
+print("🏠 Unsubscribing from house...")
+pcall(function()
+    -- Get all players to find holder
+    local Players = game:GetService("Players")
+    local holder_found = false
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        -- Try to unsubscribe from each player's house (finds the holder automatically)
+        if player ~= LocalPlayer then
+            local success = pcall(function()
+                local args = {player, true}
+                ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(unpack(args))
+            end)
+            if success then
+                print("✅ Unsubscribed from " .. player.Name .. "'s house")
+                holder_found = true
+                break
+            end
+        end
+    end
+    
+    if not holder_found then
+        print("⚠️ No house to unsubscribe from")
+    end
+end)
+
+task.wait(2)
+print("✅ Ready to start aging!")
+
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
 -- Webhook
