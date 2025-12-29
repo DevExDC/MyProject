@@ -753,8 +753,6 @@ end
 -- Main Loop
 local function mainLoop()
     while isRunning do
-        task.wait(10)
-        
         StatusLabel.Text = "📡 Checking for requests..."
         
         local requests = get_pending_requests()
@@ -773,22 +771,24 @@ local function mainLoop()
         
         if #currentQueue == 0 then
             StatusLabel.Text = "⏳ Waiting for requests..."
+            task.wait(10) -- Only wait when no requests
         else
-            for i, request in ipairs(currentQueue) do
-                stats.total = stats.total + 1
-                
-                local success = trade_to_receiver(request.username, request.pets_needed)
-                
-                if success then
-                    stats.completed = stats.completed + 1
-                    processedRequests[request.username] = true
-                else
-                    stats.failed = stats.failed + 1
-                end
-                
-                updateStats()
-                task.wait(5)
+            -- Process ONLY the first request, then recheck
+            local request = currentQueue[1]
+            stats.total = stats.total + 1
+            
+            local success = trade_to_receiver(request.username, request.pets_needed)
+            
+            if success then
+                stats.completed = stats.completed + 1
+                processedRequests[request.username] = true
+            else
+                stats.failed = stats.failed + 1
+                processedRequests[request.username] = true -- Mark as processed even if failed
             end
+            
+            updateStats()
+            task.wait(2) -- Brief wait before checking for next request
         end
     end
 end
