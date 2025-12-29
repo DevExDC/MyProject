@@ -222,7 +222,7 @@ local function analyze_pet_inventory()
                 local is_mega = pet.properties and pet.properties.mega or false
                 local age = pet.properties and pet.properties.age or 0
                 
-                -- Skip mega pets
+                -- Skip mega pets (already max)
                 if is_mega then
                     continue
                 end
@@ -238,11 +238,12 @@ local function analyze_pet_inventory()
                         })
                     end
                 else
-                    -- Normal pet
+                    -- Normal pet (NOT NEON!)
                     if age == 6 then
                         analysis.full_grown_normal = analysis.full_grown_normal + 1
                     else
-                        table.insert(analysis.neon_pets, {
+                        -- BUG WAS HERE: Was adding to neon_pets instead of normal_pets!
+                        table.insert(analysis.normal_pets, {
                             unique = pet.unique,
                             age = age
                         })
@@ -360,9 +361,9 @@ local potions_per_pet = RARITY_AGE_UPS[rarity_lower]
 
 sendWebhook(string.format("🔄 %s - Starting smart aging", playerName))
 
--- CONTINUOUS LOOP UNTIL NO MORE WORK
+-- CONTINUOUS LOOP WITH STRICT PRIORITY
 local cycle = 0
-local MAX_CYCLES = 100  -- Safety limit
+local MAX_CYCLES = 100
 
 while cycle < MAX_CYCLES do
     cycle = cycle + 1
@@ -380,105 +381,205 @@ while cycle < MAX_CYCLES do
     
     local did_something = false
     
-    -- STEP 1: Age normal pets
+    -- ============================================
+    -- PRIORITY 1: Age ALL normal pets to full grown
+    -- ============================================
     if #analysis.normal_pets > 0 and potions >= potions_per_pet then
-        print("\n📦 Aging normal pets...")
-        local can_age = math.floor(potions / potions_per_pet)
-        local to_age = math.min(can_age, #analysis.normal_pets)
+        print("\n📦 PRIORITY 1: Aging normal pets to full grown...")
         
-        for i = 1, to_age do
-            local pet = analysis.normal_pets[i]
-            local potion_batch = get_age_potion_uniques(potions_per_pet)
+        -- Age as many normal pets as possible
+        while true do
+            analysis = analyze_pet_inventory()
+            potions = count_age_potions()
             
-            if #potion_batch < potions_per_pet then
-                print("⚠️ Ran out of potions")
+            if #analysis.normal_pets == 0 then
+                print("   ✅ All normal pets are full grown!")
                 break
             end
             
-            print(string.format("   Aging normal pet %d/%d (age: %d)", i, to_age, pet.age))
+            if potions < potions_per_pet then
+                print(string.format("   ⚠️ Not enough potions (%d/%d)", potions, potions_per_pet))
+                break
+            end
+            
+            local pet = analysis.normal_pets[1]
+            local potion_batch = get_age_potion_uniques(potions_per_pet)
+            
+            if #potion_batch < potions_per_pet then
+                print("   ⚠️ Failed to get potions")
+                break
+            end
+            
+            print(string.format("   Aging normal pet (age: %d)", pet.age))
             age_up_pet(pet.unique, potion_batch)
             total_aged = total_aged + 1
         end
         
         did_something = true
         task.wait(2)
-        continue -- Recheck inventory
+        continue
     end
     
-    -- STEP 2: Make neons from full grown normals
+    -- ============================================
+    -- PRIORITY 2: Make neons from full grown normals
+    -- ============================================
     if analysis.full_grown_normal >= 4 then
-        print("\n🌟 Creating neons from full grown normals...")
-        local full_grown = get_full_grown_normals()
+        print("\n🌟 PRIORITY 2: Creating neons from full grown normals...")
         
-        while #full_grown >= 4 do
+        -- Make as many neons as possible
+        while true do
+            analysis = analyze_pet_inventory()
+            
+            if analysis.full_grown_normal < 4 then
+                print("   ✅ Made all possible neons!")
+                break
+            end
+            
+            local full_grown = get_full_grown_normals()
+            
+            if #full_grown < 4 then
+                break
+            end
+            
             if create_neon(full_grown) then
                 print("   ✅ Neon created!")
                 total_neons_created = total_neons_created + 1
                 task.wait(2)
-                full_grown = get_full_grown_normals()
             else
+                print("   ❌ Failed to create neon")
                 break
             end
         end
         
         did_something = true
         task.wait(2)
-        continue -- Recheck inventory
+        continue
     end
     
-    -- STEP 3: Age neon pets
+    -- ============================================
+    -- PRIORITY 3: Age ALL neon pets to full grown
+    -- ============================================
     if #analysis.neon_pets > 0 and potions >= potions_per_pet then
-        print("\n💎 Aging neon pets...")
-        local can_age = math.floor(potions / potions_per_pet)
-        local to_age = math.min(can_age, #analysis.neon_pets)
+        print("\n💎 PRIORITY 3: Aging neon pets to full grown...")
         
-        for i = 1, to_age do
-            local pet = analysis.neon_pets[i]
-            local potion_batch = get_age_potion_uniques(potions_per_pet)
+        -- Age as many neon pets as possible
+        while true do
+            analysis = analyze_pet_inventory()
+            potions = count_age_potions()
             
-            if #potion_batch < potions_per_pet then
-                print("⚠️ Ran out of potions")
+            if #analysis.neon_pets == 0 then
+                print("   ✅ All neon pets are full grown!")
                 break
             end
             
-            print(string.format("   Aging NEON pet %d/%d (age: %d)", i, to_age, pet.age))
+            if potions < potions_per_pet then
+                print(string.format("   ⚠️ Not enough potions (%d/%d)", potions, potions_per_pet))
+                break
+            end
+            
+            local pet = analysis.neon_pets[1]
+            local potion_batch = get_age_potion_uniques(potions_per_pet)
+            
+            if #potion_batch < potions_per_pet then
+                print("   ⚠️ Failed to get potions")
+                break
+            end
+            
+            print(string.format("   Aging NEON pet (age: %d)", pet.age))
             age_up_pet(pet.unique, potion_batch)
             total_aged = total_aged + 1
         end
         
         did_something = true
         task.wait(2)
-        continue -- Recheck inventory
+        continue
     end
     
-    -- STEP 4: Make megas from full grown neons
+    -- ============================================
+    -- PRIORITY 4: Make megas from full grown neons
+    -- ============================================
     if analysis.full_grown_neons >= 4 then
-        print("\n💎 Creating MEGA from full grown neons...")
-        local full_grown_neons = get_full_grown_neons()
+        print("\n🔥 PRIORITY 4: Creating MEGA from full grown neons...")
         
-        while #full_grown_neons >= 4 do
-            if create_neon(full_grown_neons) then -- Same remote!
+        -- Make as many megas as possible
+        while true do
+            analysis = analyze_pet_inventory()
+            
+            if analysis.full_grown_neons < 4 then
+                print("   ✅ Made all possible megas!")
+                break
+            end
+            
+            local full_grown_neons = get_full_grown_neons()
+            
+            if #full_grown_neons < 4 then
+                break
+            end
+            
+            if create_neon(full_grown_neons) then
                 print("   ✅ MEGA created!")
                 total_megas_created = total_megas_created + 1
                 task.wait(2)
-                full_grown_neons = get_full_grown_neons()
             else
+                print("   ❌ Failed to create mega")
                 break
             end
         end
         
         did_something = true
         task.wait(2)
-        continue -- Recheck inventory
+        continue
     end
     
-    -- If nothing left to do, exit loop
+    -- ============================================
+    -- PRIORITY 5: Use leftover potions on ANY pet
+    -- ============================================
+    potions = count_age_potions()
+    if potions > 0 then
+        analysis = analyze_pet_inventory()
+        
+        -- Try to use on normal pets first
+        if #analysis.normal_pets > 0 then
+            print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on normal pets...", potions))
+            local pet = analysis.normal_pets[1]
+            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+            
+            if #potion_batch > 0 then
+                print(string.format("   Using %d potions on normal pet (age: %d)", #potion_batch, pet.age))
+                age_up_pet(pet.unique, potion_batch)
+                total_aged = total_aged + 1
+                did_something = true
+                task.wait(2)
+                continue
+            end
+        end
+        
+        -- Try to use on neon pets if no normals
+        if #analysis.neon_pets > 0 then
+            print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on neon pets...", potions))
+            local pet = analysis.neon_pets[1]
+            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+            
+            if #potion_batch > 0 then
+                print(string.format("   Using %d potions on NEON pet (age: %d)", #potion_batch, pet.age))
+                age_up_pet(pet.unique, potion_batch)
+                total_aged = total_aged + 1
+                did_something = true
+                task.wait(2)
+                continue
+            end
+        end
+    end
+    
+    -- ============================================
+    -- NO MORE WORK - EXIT
+    -- ============================================
     if not did_something then
         print("\n✅ No more work to do!")
         
         local remaining_potions = count_age_potions()
         if remaining_potions > 0 then
-            print(string.format("⚠️ WARNING: %d potions remaining (not enough to age)", remaining_potions))
+            print(string.format("⚠️ WARNING: %d potions remaining (couldn't use them)", remaining_potions))
         end
         
         break
