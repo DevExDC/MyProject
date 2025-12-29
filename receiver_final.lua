@@ -183,40 +183,42 @@ local function setup_auto_accept(expected_pets)
         local dialogApp = LocalPlayer.PlayerGui:WaitForChild("DialogApp")
         local initialPets = count_pets()
         local webhookSent = false
-        local lastDialogVisible = false
         
         print("\n✅ Auto-accept system ready (no spawn mode)")
         
-        -- Phase 1: Auto-accept trade requests (UNIVERSAL - from ANYONE)
+        -- Phase 1: Auto-accept EVERY trade request (NO FLAGS - CONTINUOUS)
         task.spawn(function()
-            print("✅ Phase 1: Universal dialog acceptor started")
-            while task.wait(0.5) do
+            print("✅ Phase 1: Continuous dialog acceptor started")
+            while task.wait(0.3) do
                 pcall(function()
+                    -- Check if goal reached - if yes, stop accepting
+                    local current = count_pets()
+                    local received = current - initialPets
+                    
+                    if received >= expected_pets then
+                        -- Goal reached, stop accepting new trades
+                        return
+                    end
+                    
+                    -- Check for dialog EVERY loop
                     local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
                     
-                    if dialogVisible and not lastDialogVisible then
-                        lastDialogVisible = true
-                        print("\n📨 Trade request dialog detected!")
+                    if dialogVisible then
+                        print("\n📨 Trade request detected!")
                         
-                        -- Accept from EVERYONE (don't check names)
+                        -- Accept from ALL players
                         for _, player in pairs(Players:GetPlayers()) do
-                            -- Accept from everyone EXCEPT ourselves
                             if player ~= LocalPlayer then
-                                print("   Accepting from: " .. player.Name)
-                                local args = {player, true}
                                 local success = pcall(function()
+                                    local args = {player, true}
                                     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(unpack(args))
                                 end)
                                 if success then
-                                    print("   ✅ Accept sent to " .. player.Name .. "!")
-                                else
-                                    print("   ⚠️ Failed to send accept to " .. player.Name)
+                                    print("   ✅ Accepted from: " .. player.Name)
                                 end
-                                task.wait(0.3) -- Small delay between accepts
+                                task.wait(0.2)
                             end
                         end
-                    elseif not dialogVisible then
-                        lastDialogVisible = false
                     end
                 end)
             end
