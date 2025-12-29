@@ -572,37 +572,67 @@ while cycle < MAX_CYCLES do
     if potions > 0 then
         analysis = analyze_pet_inventory()
         
-        -- Try to use on normal pets first
+        -- Try to use on normal pets first (NOT age 6)
         if #analysis.normal_pets > 0 then
             print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on normal pets...", potions))
-            local pet = analysis.normal_pets[1]
-            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
             
-            if #potion_batch > 0 then
-                print(string.format("   Using %d potions on normal pet (age: %d)", #potion_batch, pet.age))
-                age_up_pet(pet.unique, potion_batch)
-                total_aged = total_aged + 1
-                did_something = true
-                task.wait(2)
-                continue
+            -- Find a pet that's NOT age 6
+            local target_pet = nil
+            for _, pet in ipairs(analysis.normal_pets) do
+                if pet.age < 6 then
+                    target_pet = pet
+                    break
+                end
+            end
+            
+            if target_pet then
+                local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+                
+                if #potion_batch > 0 then
+                    print(string.format("   Using %d potions on normal pet (age: %d)", #potion_batch, target_pet.age))
+                    age_up_pet(target_pet.unique, potion_batch)
+                    total_aged = total_aged + 1
+                    did_something = true
+                    task.wait(2)
+                    continue
+                end
+            else
+                print("   ⚠️ All normal pets are age 6, can't use leftovers on them")
             end
         end
         
-        -- Try to use on neon pets if no normals
+        -- Try to use on neon pets if no normals (NOT age 6)
         if #analysis.neon_pets > 0 then
             print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on neon pets...", potions))
-            local pet = analysis.neon_pets[1]
-            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
             
-            if #potion_batch > 0 then
-                print(string.format("   Using %d potions on NEON pet (age: %d)", #potion_batch, pet.age))
-                age_up_pet(pet.unique, potion_batch)
-                total_aged = total_aged + 1
-                did_something = true
-                task.wait(2)
-                continue
+            -- Find a neon that's NOT age 6
+            local target_neon = nil
+            for _, pet in ipairs(analysis.neon_pets) do
+                if pet.age < 6 then
+                    target_neon = pet
+                    break
+                end
+            end
+            
+            if target_neon then
+                local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+                
+                if #potion_batch > 0 then
+                    print(string.format("   Using %d potions on NEON pet (age: %d)", #potion_batch, target_neon.age))
+                    age_up_pet(target_neon.unique, potion_batch)
+                    total_aged = total_aged + 1
+                    did_something = true
+                    task.wait(2)
+                    continue
+                end
+            else
+                print("   ⚠️ All neon pets are age 6, can't use leftovers on them")
             end
         end
+        
+        -- If we got here, we have leftover potions but can't use them
+        print(string.format("\n⚠️ WARNING: %d potions remaining but all pets are age 6!", potions))
+        print("   Can't age pets that are already age 6")
     end
     
     -- ============================================
@@ -613,7 +643,15 @@ while cycle < MAX_CYCLES do
         
         local remaining_potions = count_age_potions()
         if remaining_potions > 0 then
-            print(string.format("⚠️ WARNING: %d potions remaining (couldn't use them)", remaining_potions))
+            print(string.format("⚠️ WARNING: %d potions remaining", remaining_potions))
+            
+            -- Check why we couldn't use them
+            analysis = analyze_pet_inventory()
+            if #analysis.normal_pets == 0 and #analysis.neon_pets == 0 then
+                print("   Reason: All pets are already age 6 (full grown)")
+            else
+                print(string.format("   Reason: Not enough potions to age (need %d)", potions_per_pet))
+            end
         end
         
         break
