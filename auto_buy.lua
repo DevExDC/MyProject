@@ -186,6 +186,9 @@ if current_currency == 0 then
     end)
     
     sendWebhook(string.format("❌ %s - Failed - Currency detection failed", playerName))
+    
+    print("\n🔴 Disabling account (currency detection failed)...")
+    disableAccount()
     return
 end
 
@@ -199,6 +202,9 @@ if spendable <= 0 then
     warn(string.format("   Current: %s", formatNumber(current_currency)))
     warn(string.format("   Reserved: %s", formatNumber(config.reserve_currency)))
     sendWebhook(string.format("❌ %s - Insufficient funds (reserved too much)", playerName))
+    
+    print("\n🔴 Disabling account (insufficient currency)...")
+    disableAccount()
     return
 end
 
@@ -207,6 +213,9 @@ if spendable < config.item_price then
     warn(string.format("   Spendable: %s", formatNumber(spendable)))
     warn(string.format("   Item price: %s", formatNumber(config.item_price)))
     sendWebhook(string.format("❌ %s - Cannot afford item", playerName))
+    
+    print("\n🔴 Disabling account (cannot afford item)...")
+    disableAccount()
     return
 end
 
