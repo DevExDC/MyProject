@@ -1,10 +1,10 @@
 --[[
     SUCCESS Auto-Trade Script - ALL PET TYPES AT ONCE
     Trades ALL specified pet types together (not sequential)
-    v4.0.0 - Optimized for speed
+    v4.1.0 - Fixed for modern executors
 ]]
 
-repeat wait() until game:IsLoaded()
+repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -374,7 +374,7 @@ local function autotrade(username)
             success_flag = true
         else
             warn("⚠️ No pets traded! Refreshing list...")
-            pets_unique_ids = get_all_pets()
+            pets_unique_ids, _ = get_all_pets()  -- Get both return values but ignore total
             success_flag = false
         end
         
@@ -501,7 +501,7 @@ while #pets_unique_ids > 0 and tradeAttempts < maxTrades do
             if consecutiveFailures >= maxConsecutiveFailures then
                 warn(string.format("⚠️ %d consecutive failures - Holder might be AFK or busy. Waiting longer...", consecutiveFailures))
                 task.wait(10)  -- Wait longer before retry
-                consecutiveFailures = 0  # Reset counter
+                consecutiveFailures = 0  -- Reset counter
             else
                 task.wait(5)  -- Normal retry wait
             end
