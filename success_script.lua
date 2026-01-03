@@ -174,6 +174,7 @@ end
 local function get_all_pets()
     local all_pets = {}
     local pet_counts = {}  -- Track counts per type
+    local total_inventory_count = 0  -- Track ALL pets in inventory
     
     -- Initialize counters
     for _, kind in ipairs(config.pets_to_trade) do
@@ -184,6 +185,11 @@ local function get_all_pets()
         local playerData = Data.get_data()[playerName]
         if not playerData or not playerData.inventory or not playerData.inventory.pets then
             return
+        end
+        
+        -- Count ALL pets first
+        for _, pet in pairs(playerData.inventory.pets) do
+            total_inventory_count = total_inventory_count + 1
         end
         
         -- Collect ALL pets of ALL specified types
@@ -199,16 +205,26 @@ local function get_all_pets()
     end)
     
     -- Print breakdown
+    print(string.format("\n📦 Inventory Summary:"))
+    print(string.format("   • Total pets in inventory: %d", total_inventory_count))
+    print(string.format("   • Matching target types: %d\n", #all_pets))
+    
     if #all_pets > 0 then
-        print(string.format("\n📦 Found %d total pets:", #all_pets))
+        print("   Breakdown by type:")
         for kind, count in pairs(pet_counts) do
             if count > 0 then
                 print(string.format("   • %s: %d", kind, count))
             end
         end
+    else
+        if total_inventory_count > 0 then
+            print(string.format("   ⚠️  Account has %d pets, but NONE match the target types!", total_inventory_count))
+        else
+            print("   ⚠️  Account has NO pets at all!")
+        end
     end
     
-    return all_pets
+    return all_pets, total_inventory_count
 end
 
 -- Count ALL pets of ALL specified types
@@ -395,15 +411,31 @@ print(string.format("│ 📊 Selected Holder: %s", selected_holder))
 print(string.format("└────────────────────────────────────┘"))
 
 -- Get ALL pets of ALL types
-pets_unique_ids = get_all_pets()
+pets_unique_ids, total_inventory = get_all_pets()
 
 if #pets_unique_ids == 0 then
-    warn(string.format("❌ No pets found!"))
-    sendWebhook(string.format("❌ %s - No Pets Found", playerName))
+    if total_inventory > 0 then
+        -- Account has pets, but none match the target types
+        local msg = string.format("⚠️ Account has %d pets, but NONE match the target types!", total_inventory)
+        warn(msg)
+        sendWebhook(string.format("⚠️ %s - No Matching Pets - Has %d pets but wrong types", playerName, total_inventory))
+        
+        print("\n========================================")
+        print("⚠️  SCRIPT STOPPED - NO MATCHING PETS")
+        print(string.format("   Account has %d pets (wrong types)", total_inventory))
+        print("========================================")
+    else
+        -- Account has no pets at all
+        warn("❌ Account has NO pets at all!")
+        sendWebhook(string.format("❌ %s - No Pets - Inventory is empty", playerName))
+        
+        print("\n========================================")
+        print("❌ SCRIPT STOPPED - INVENTORY EMPTY")
+        print("========================================")
+    end
     
-    print("\n========================================")
-    print("❌ SCRIPT STOPPED - NO PETS TO TRADE")
-    print("========================================")
+    -- Auto-disable if enabled
+    disableAccount()
     return
 end
 
