@@ -1,6 +1,6 @@
 -- ============================================
--- SMART AGING SCRIPT - REBUILT
--- Proper property checking and intelligent aging
+-- SMART AGING SCRIPT - FIXED
+-- Added 15s delay between pets + Fixed unsubscribe
 -- ============================================
 
 if not getgenv().AgingConfig then
@@ -36,8 +36,9 @@ if not RARITY_AGE_UPS[rarity_lower] then
 end
 
 print("===========================================")
-print("  SMART AGING SYSTEM - REBUILT")
-print("  Intelligent Pet Detection & Aging")
+print("  SMART AGING SYSTEM - FIXED V2")
+print("  + 15s delay between pets")
+print("  + Fixed unsubscribe logic")
 print("===========================================")
 
 repeat task.wait() until game:IsLoaded()
@@ -135,30 +136,14 @@ print("✅ Game entered!")
 print("⏳ Waiting 30 seconds before unsubscribing from house...")
 task.wait(30)
 
-print("🏠 Unsubscribing from house...")
+-- ============== FIXED UNSUBSCRIBE ==============
+print("🏠 Unsubscribing from own house...")
 pcall(function()
-    -- Get all players to find holder
-    local Players = game:GetService("Players")
-    local holder_found = false
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        -- Try to unsubscribe from each player's house (finds the holder automatically)
-        if player ~= LocalPlayer then
-            local success = pcall(function()
-                local args = {player, true}
-                ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(unpack(args))
-            end)
-            if success then
-                print("✅ Unsubscribed from " .. player.Name .. "'s house")
-                holder_found = true
-                break
-            end
-        end
-    end
-    
-    if not holder_found then
-        print("⚠️ No house to unsubscribe from")
-    end
+    -- FIXED: Unsubscribe from YOUR OWN house (not other players!)
+    -- This removes you from holder's house and puts you in your own
+    local args = {LocalPlayer, true}
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(unpack(args))
+    print("✅ Unsubscribed from own house (left holder's house)")
 end)
 
 print("⏳ Waiting 10 seconds after unsubscribe...")
@@ -276,7 +261,6 @@ local function analyze_pet_inventory()
                     if age == 6 then
                         analysis.full_grown_normal = analysis.full_grown_normal + 1
                     else
-                        -- BUG WAS HERE: Was adding to neon_pets instead of normal_pets!
                         table.insert(analysis.normal_pets, {
                             unique = pet.unique,
                             age = age
@@ -344,9 +328,13 @@ local function equip_pet(pet_unique)
     end)
 end
 
--- Age up pet
+-- ============== FIXED: Age up pet with 15s delay ==============
 local function age_up_pet(pet_unique, potion_uniques)
+    print("   ⏳ Waiting 15 seconds before equipping pet...")
+    task.wait(15)  -- ✅ ADDED: 15 second delay BEFORE equipping
+    
     equip_pet(pet_unique)
+    print("   ✅ Pet equipped, waiting 1 second...")
     task.wait(1)
     
     pcall(function()
@@ -356,6 +344,7 @@ local function age_up_pet(pet_unique, potion_uniques)
             table.insert(additional, potion_uniques[i])
         end
         
+        print("   🍼 Feeding potions...")
         ReplicatedStorage:WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(
             "__Enum_PetObjectCreatorType_2",
             {
@@ -366,6 +355,7 @@ local function age_up_pet(pet_unique, potion_uniques)
         )
     end)
     
+    print("   ⏳ Waiting 10 seconds for feeding animation...")
     task.wait(10)
 end
 
