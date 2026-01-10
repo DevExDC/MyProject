@@ -1,6 +1,6 @@
 -- ============================================
--- SMART AGING SCRIPT - FIXED
--- Added 15s delay between pets + Fixed unsubscribe
+-- SMART AGING SCRIPT - OPTIMIZED TIMING
+-- Wait 15s AFTER feeding (not before equipping)
 -- ============================================
 
 if not getgenv().AgingConfig then
@@ -36,8 +36,8 @@ if not RARITY_AGE_UPS[rarity_lower] then
 end
 
 print("===========================================")
-print("  SMART AGING SYSTEM - FIXED V2")
-print("  + 15s delay between pets")
+print("  SMART AGING SYSTEM - OPTIMIZED")
+print("  + 15s wait after feeding only")
 print("  + Fixed unsubscribe logic")
 print("===========================================")
 
@@ -71,7 +71,6 @@ local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 
 local function enter_the_game()
     print("📍 Phase 1: Accepting terms...")
-    -- Phase 1: Accept terms (Click "Play")
     pcall(function()
         game:GetService("ReplicatedStorage")
             :WaitForChild("API")
@@ -81,7 +80,6 @@ local function enter_the_game()
     task.wait(1)
     
     print("📍 Phase 2: Choosing team...")
-    -- Phase 2: Choose team (Click "Parents")
     pcall(function()
         local args = {
             "Parents",
@@ -98,7 +96,6 @@ local function enter_the_game()
     task.wait(1)
     
     print("📍 Phase 3: Spawning...")
-    -- Phase 3: Actually spawn
     pcall(function()
         local args = {"Home"}
         game:GetService("ReplicatedStorage")
@@ -108,7 +105,6 @@ local function enter_the_game()
     end)
     task.wait(2)
     
-    -- Hide UI elements
     UIManager.set_app_visibility("MainMenuApp", false)
     UIManager.set_app_visibility("NewsApp", false)
     UIManager.set_app_visibility("DialogApp", false)
@@ -116,7 +112,6 @@ local function enter_the_game()
     
     task.wait(2)
     
-    -- Claim daily reward
     pcall(function()
         game:GetService("ReplicatedStorage")
             :WaitForChild("API")
@@ -132,15 +127,12 @@ print("🎮 Entering game...")
 enter_the_game()
 print("✅ Game entered!")
 
--- Wait 30 seconds then unsubscribe from house
 print("⏳ Waiting 30 seconds before unsubscribing from house...")
 task.wait(30)
 
 -- ============== FIXED UNSUBSCRIBE ==============
 print("🏠 Unsubscribing from own house...")
 pcall(function()
-    -- FIXED: Unsubscribe from YOUR OWN house (not other players!)
-    -- This removes you from holder's house and puts you in your own
     local args = {LocalPlayer, true}
     ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(unpack(args))
     print("✅ Unsubscribed from own house (left holder's house)")
@@ -223,10 +215,10 @@ end
 -- Analyze pet inventory with FULL property checking
 local function analyze_pet_inventory()
     local analysis = {
-        normal_pets = {},      -- Normal pets by age
-        neon_pets = {},        -- Neon pets by age
-        full_grown_normal = 0, -- Count of age 6 normals
-        full_grown_neons = 0   -- Count of age 6 neons
+        normal_pets = {},
+        neon_pets = {},
+        full_grown_normal = 0,
+        full_grown_neons = 0
     }
     
     pcall(function()
@@ -241,13 +233,11 @@ local function analyze_pet_inventory()
                 local is_mega = pet.properties and pet.properties.mega or false
                 local age = pet.properties and pet.properties.age or 0
                 
-                -- Skip mega pets (already max)
                 if is_mega then
                     continue
                 end
                 
                 if is_neon then
-                    -- Neon pet
                     if age == 6 then
                         analysis.full_grown_neons = analysis.full_grown_neons + 1
                     else
@@ -257,7 +247,6 @@ local function analyze_pet_inventory()
                         })
                     end
                 else
-                    -- Normal pet (NOT NEON!)
                     if age == 6 then
                         analysis.full_grown_normal = analysis.full_grown_normal + 1
                     else
@@ -328,11 +317,9 @@ local function equip_pet(pet_unique)
     end)
 end
 
--- ============== FIXED: Age up pet with 15s delay ==============
+-- ============== OPTIMIZED: Age up pet - 15s AFTER feeding only ==============
 local function age_up_pet(pet_unique, potion_uniques)
-    print("   ⏳ Waiting 15 seconds before equipping pet...")
-    task.wait(15)  -- ✅ ADDED: 15 second delay BEFORE equipping
-    
+    -- Equip immediately (no delay)
     equip_pet(pet_unique)
     print("   ✅ Pet equipped, waiting 1 second...")
     task.wait(1)
@@ -355,8 +342,10 @@ local function age_up_pet(pet_unique, potion_uniques)
         )
     end)
     
-    print("   ⏳ Waiting 10 seconds for feeding animation...")
-    task.wait(10)
+    -- Wait 15 seconds AFTER feeding (for animation to complete)
+    print("   ⏳ Waiting 15 seconds for animation...")
+    task.wait(15)
+    print("   ✅ Animation complete!")
 end
 
 -- Create neon
@@ -405,13 +394,10 @@ while cycle < MAX_CYCLES do
     
     local did_something = false
     
-    -- ============================================
     -- PRIORITY 1: Age ALL normal pets to full grown
-    -- ============================================
     if #analysis.normal_pets > 0 and potions >= potions_per_pet then
         print("\n📦 PRIORITY 1: Aging normal pets to full grown...")
         
-        -- Age as many normal pets as possible
         while true do
             analysis = analyze_pet_inventory()
             potions = count_age_potions()
@@ -444,13 +430,10 @@ while cycle < MAX_CYCLES do
         continue
     end
     
-    -- ============================================
     -- PRIORITY 2: Make neons from full grown normals
-    -- ============================================
     if analysis.full_grown_normal >= 4 then
         print("\n🌟 PRIORITY 2: Creating neons from full grown normals...")
         
-        -- Make as many neons as possible
         while true do
             analysis = analyze_pet_inventory()
             
@@ -480,13 +463,10 @@ while cycle < MAX_CYCLES do
         continue
     end
     
-    -- ============================================
     -- PRIORITY 3: Age ALL neon pets to full grown
-    -- ============================================
     if #analysis.neon_pets > 0 and potions >= potions_per_pet then
         print("\n💎 PRIORITY 3: Aging neon pets to full grown...")
         
-        -- Age as many neon pets as possible
         while true do
             analysis = analyze_pet_inventory()
             potions = count_age_potions()
@@ -519,13 +499,10 @@ while cycle < MAX_CYCLES do
         continue
     end
     
-    -- ============================================
     -- PRIORITY 4: Make megas from full grown neons
-    -- ============================================
     if analysis.full_grown_neons >= 4 then
         print("\n🔥 PRIORITY 4: Creating MEGA from full grown neons...")
         
-        -- Make as many megas as possible
         while true do
             analysis = analyze_pet_inventory()
             
@@ -555,18 +532,14 @@ while cycle < MAX_CYCLES do
         continue
     end
     
-    -- ============================================
     -- PRIORITY 5: Use leftover potions on ANY pet
-    -- ============================================
     potions = count_age_potions()
     if potions > 0 then
         analysis = analyze_pet_inventory()
         
-        -- Try to use on normal pets first (NOT age 6)
         if #analysis.normal_pets > 0 then
             print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on normal pets...", potions))
             
-            -- Find a pet that's NOT age 6
             local target_pet = nil
             for _, pet in ipairs(analysis.normal_pets) do
                 if pet.age < 6 then
@@ -591,11 +564,9 @@ while cycle < MAX_CYCLES do
             end
         end
         
-        -- Try to use on neon pets if no normals (NOT age 6)
         if #analysis.neon_pets > 0 then
             print(string.format("\n🔄 LEFTOVER: Using %d remaining potions on neon pets...", potions))
             
-            -- Find a neon that's NOT age 6
             local target_neon = nil
             for _, pet in ipairs(analysis.neon_pets) do
                 if pet.age < 6 then
@@ -620,14 +591,13 @@ while cycle < MAX_CYCLES do
             end
         end
         
-        -- If we got here, we have leftover potions but can't use them
-        print(string.format("\n⚠️ WARNING: %d potions remaining but all pets are age 6!", potions))
-        print("   Can't age pets that are already age 6")
+        if potions > 0 then
+            print(string.format("\n⚠️ WARNING: %d potions remaining but all pets are age 6!", potions))
+            print("   Can't age pets that are already age 6")
+        end
     end
     
-    -- ============================================
     -- NO MORE WORK - EXIT
-    -- ============================================
     if not did_something then
         print("\n✅ No more work to do!")
         
@@ -635,7 +605,6 @@ while cycle < MAX_CYCLES do
         if remaining_potions > 0 then
             print(string.format("⚠️ WARNING: %d potions remaining", remaining_potions))
             
-            -- Check why we couldn't use them
             analysis = analyze_pet_inventory()
             if #analysis.normal_pets == 0 and #analysis.neon_pets == 0 then
                 print("   Reason: All pets are already age 6 (full grown)")
@@ -648,7 +617,6 @@ while cycle < MAX_CYCLES do
     end
 end
 
--- Check if hit max cycles (safety)
 if cycle >= MAX_CYCLES then
     print("\n⚠️ WARNING: Hit max cycles limit (" .. MAX_CYCLES .. ")")
     print("   Forcing completion to prevent infinite loop")
