@@ -1,7 +1,6 @@
 -- ============================================
--- RECEIVER - SMART AUTO-COMPLETE
--- + Detects when holder runs out
--- + Auto-completes with timeout
+-- RECEIVER - SMART AUTO-COMPLETE (FIXED)
+-- Keeps original trade logic + smart completion
 -- ============================================
 
 if not getgenv().ReceiverConfig then
@@ -192,7 +191,7 @@ local function count_pets()
     return success and count or 0
 end
 
--- ============== SMART AUTO-ACCEPT WITH COMPLETION DETECTION ==============
+-- ============== ORIGINAL AUTO-ACCEPT (NO CHANGES) ==============
 
 local function setup_auto_accept(expected_pets)
     pcall(function()
@@ -200,29 +199,21 @@ local function setup_auto_accept(expected_pets)
         local dialogApp = LocalPlayer.PlayerGui:WaitForChild("DialogApp")
         local initialPets = count_pets()
         local webhookSent = false
-        local completed = false
         
-        print("\n✅ Auto-accept system ready (smart completion)")
+        print("\n✅ Auto-accept system ready (no spawn mode)")
         
-        -- Phase 1: Auto-accept trades
+        -- Phase 1: Auto-accept EVERY trade request (ORIGINAL - NO FLAGS)
         task.spawn(function()
             print("✅ Phase 1: Continuous dialog acceptor started")
             while task.wait(0.3) do
-                if completed then break end
-                
                 pcall(function()
-                    local current = count_pets()
-                    local received = current - initialPets
-                    
-                    if received >= expected_pets then
-                        return
-                    end
-                    
+                    -- NO EARLY RETURN - Accept all trades continuously
                     local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
                     
                     if dialogVisible then
                         print("\n📨 Trade request detected!")
                         
+                        -- Accept from ALL players
                         for _, player in pairs(Players:GetPlayers()) do
                             if player ~= LocalPlayer then
                                 local success = pcall(function()
@@ -240,10 +231,9 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 2: Auto-accept negotiation
+        -- Phase 2: Auto-accept negotiation (ORIGINAL)
         task.spawn(function()
             while task.wait(0.1) do
-                if completed then break end
                 pcall(function()
                     if tradeGui.Visible then
                         ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
@@ -252,10 +242,9 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 3: Auto-confirm trade
+        -- Phase 3: Auto-confirm trade (ORIGINAL)
         task.spawn(function()
             while task.wait(0.1) do
-                if completed then break end
                 pcall(function()
                     if tradeGui.Visible then
                         ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
@@ -264,7 +253,7 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- ============== SMART MONITOR WITH AUTO-COMPLETE ==============
+        -- ============== ENHANCED MONITOR WITH SMART COMPLETION ==============
         task.spawn(function()
             local was_visible = false
             local last_pet_count = initialPets
@@ -273,13 +262,18 @@ local function setup_auto_accept(expected_pets)
             local start_time = tick()
             
             while task.wait(0.5) do
-                if completed then break end
-                
                 pcall(function()
                     local current = count_pets()
                     local received = current - initialPets
                     local time_since_last_trade = tick() - last_trade_time
                     local elapsed_minutes = math.floor((tick() - start_time) / 60)
+                    
+                    -- Check for new pets
+                    if current > last_pet_count then
+                        last_pet_count = current
+                        last_trade_time = tick()
+                        print(string.format("📦 Trade received! Progress: %d/%d", received, expected_pets))
+                    end
                     
                     -- ============================================
                     -- CHECK 1: Got all pets!
@@ -297,15 +291,7 @@ local function setup_auto_accept(expected_pets)
                         
                         disableAccount()
                         webhookSent = true
-                        completed = true
                         return
-                    end
-                    
-                    -- Check for new pets
-                    if current > last_pet_count then
-                        last_pet_count = current
-                        last_trade_time = tick()
-                        print(string.format("📦 Trade received! Progress: %d/%d", received, expected_pets))
                     end
                     
                     -- ============================================
@@ -338,7 +324,6 @@ local function setup_auto_accept(expected_pets)
                                     
                                     disableAccount()
                                     webhookSent = true
-                                    completed = true
                                     return
                                 end
                             end
@@ -346,7 +331,7 @@ local function setup_auto_accept(expected_pets)
                     end
                     
                     -- ============================================
-                    -- CHECK 3: No trades for too long
+                    -- CHECK 3: No trades for too long (ONLY if received > 0)
                     -- ============================================
                     if time_since_last_trade > CONFIG.NO_TRADE_TIMEOUT and received > 0 and not webhookSent then
                         print("\n" .. ("="):rep(50))
@@ -363,7 +348,6 @@ local function setup_auto_accept(expected_pets)
                         
                         disableAccount()
                         webhookSent = true
-                        completed = true
                         return
                     end
                     
@@ -379,7 +363,7 @@ local function setup_auto_accept(expected_pets)
                     end
                     
                     -- Status update every 30 seconds
-                    if math.floor(tick() - start_time) % 30 == 0 then
+                    if math.floor(tick() - start_time) % 30 == 0 and math.floor(tick() - start_time) > 0 then
                         print(string.format("\n📊 [%dm] Status: %d/%d pets | Last trade: %.0fs ago", 
                             elapsed_minutes, received, expected_pets, time_since_last_trade))
                     end
