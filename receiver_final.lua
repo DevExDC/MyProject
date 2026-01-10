@@ -1,6 +1,6 @@
 -- ============================================
--- RECEIVER - SMART AUTO-COMPLETE (FIXED)
--- Keeps original trade logic + smart completion
+-- RECEIVER - WITH SMART SERVER STATUS
+-- Only checks server when holder reports out of pets
 -- ============================================
 
 if not getgenv().ReceiverConfig then
@@ -9,9 +9,7 @@ if not getgenv().ReceiverConfig then
         WEBHOOK_URL = "",
         RARITY = "legendary",
         PET_KIND = "winter_2025_christmas_spirit",
-        FARMSYNC_API_KEY = "",
-        NO_TRADE_TIMEOUT = 300,        -- Auto-complete if no trades for 5 min
-        STATUS_CHECK_INTERVAL = 10     -- Check server status every 10s
+        FARMSYNC_API_KEY = ""
     }
 end
 
@@ -43,11 +41,8 @@ if not RARITY_AGE_UPS[rarity_lower] then
 end
 
 print("===========================================")
-print("  RECEIVER - SMART AUTO-COMPLETE v2.0")
-print("  + Auto-complete detection")
-print("  + No-trade timeout")
-print("===========================================")
-print("No-Trade Timeout: " .. CONFIG.NO_TRADE_TIMEOUT .. "s")
+print("  RECEIVER - SMART SERVER STATUS")
+print("  Checks server for holder status")
 print("===========================================")
 
 repeat task.wait() until game:IsLoaded()
@@ -60,7 +55,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
 
--- Anti-AFK
+-- ============== ANTI-AFK ==============
 local VirtualUser = game:GetService("VirtualUser")
 LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
@@ -68,13 +63,14 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
--- Dehash
+-- ============== DEHASH ==============
 print("🔧 Dehashing remotes...")
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
 print("✅ Remotes dehashed!")
 
+-- ============== NO SPAWNING! ==============
 print("⚠️ NOT spawning - waiting for trades without spawn!")
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
@@ -96,7 +92,6 @@ local function sendWebhook(message)
 end
 
 local function post_to_pc_server(potions, pets_needed)
-    local success = false
     pcall(function()
         local data = {
             username = playerName,
@@ -119,21 +114,14 @@ local function post_to_pc_server(potions, pets_needed)
         
         if response.StatusCode == 200 then
             print("✅ Request sent to PC successfully!")
-            success = true
         else
             warn("⚠️  PC server responded with: " .. response.StatusCode)
         end
     end)
-    return success
 end
 
 local function disableAccount()
-    if CONFIG.FARMSYNC_API_KEY == "" then 
-        print("⚠️ No API key, skipping auto-disable")
-        return false
-    end
-    
-    local success = false
+    if CONFIG.FARMSYNC_API_KEY == "" then return end
     pcall(function()
         request({
             Url = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
@@ -145,9 +133,7 @@ local function disableAccount()
             Body = HttpService:JSONEncode({enabled = false})
         })
         print("🔴 Account disabled!")
-        success = true
     end)
-    return success
 end
 
 local function count_age_potions()
@@ -191,8 +177,6 @@ local function count_pets()
     return success and count or 0
 end
 
--- ============== ORIGINAL AUTO-ACCEPT (NO CHANGES) ==============
-
 local function setup_auto_accept(expected_pets)
     pcall(function()
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
@@ -202,12 +186,14 @@ local function setup_auto_accept(expected_pets)
         
         print("\n✅ Auto-accept system ready (no spawn mode)")
         
-        -- Phase 1: Auto-accept EVERY trade request (ORIGINAL - NO FLAGS)
+        -- Phase 1: Auto-accept EVERY trade request (NO FLAGS - CONTINUOUS)
         task.spawn(function()
             print("✅ Phase 1: Continuous dialog acceptor started")
             while task.wait(0.3) do
                 pcall(function()
-                    -- NO EARLY RETURN - Accept all trades continuously
+                    -- NO EARLY RETURN - Always accept trades
+                    
+                    -- Check for dialog EVERY loop
                     local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
                     
                     if dialogVisible then
@@ -231,7 +217,7 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 2: Auto-accept negotiation (ORIGINAL)
+        -- Phase 2: Auto-accept negotiation
         task.spawn(function()
             while task.wait(0.1) do
                 pcall(function()
@@ -242,7 +228,7 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- Phase 3: Auto-confirm trade (ORIGINAL)
+        -- Phase 3: Auto-confirm trade
         task.spawn(function()
             while task.wait(0.1) do
                 pcall(function()
@@ -253,55 +239,26 @@ local function setup_auto_accept(expected_pets)
             end
         end)
         
-        -- ============== ENHANCED MONITOR WITH SMART COMPLETION ==============
+        -- Monitor trades
         task.spawn(function()
             local was_visible = false
             local last_pet_count = initialPets
-            local last_trade_time = tick()
+            local no_change_time = 0
+            local MAX_WAIT_TIME = 5400
             local last_status_check = 0
-            local start_time = tick()
             
             while task.wait(0.5) do
                 pcall(function()
                     local current = count_pets()
-                    local received = current - initialPets
-                    local time_since_last_trade = tick() - last_trade_time
-                    local elapsed_minutes = math.floor((tick() - start_time) / 60)
-                    
-                    -- Check for new pets
-                    if current > last_pet_count then
-                        last_pet_count = current
-                        last_trade_time = tick()
-                        print(string.format("📦 Trade received! Progress: %d/%d", received, expected_pets))
-                    end
                     
                     -- ============================================
-                    -- CHECK 1: Got all pets!
-                    -- ============================================
-                    if received >= expected_pets and not webhookSent then
-                        print("\n" .. ("="):rep(50))
-                        print("✅ SUCCESS! All pets received!")
-                        print(("="):rep(50))
-                        print(string.format("   Received: %d/%d pets", received, expected_pets))
-                        print(string.format("   Time: %dm", elapsed_minutes))
-                        print(("="):rep(50))
-                        
-                        sendWebhook(string.format("✅ %s - COMPLETE - %d pets in %dm!", 
-                            playerName, received, elapsed_minutes))
-                        
-                        disableAccount()
-                        webhookSent = true
-                        return
-                    end
-                    
-                    -- ============================================
-                    -- CHECK 2: Check server status
+                    -- SMART SERVER STATUS CHECK (every 10 seconds)
                     -- ============================================
                     last_status_check = last_status_check + 0.5
-                    if last_status_check >= CONFIG.STATUS_CHECK_INTERVAL then
+                    if last_status_check >= 10 then
                         last_status_check = 0
                         
-                        pcall(function()
+                        local check_success, check_result = pcall(function()
                             local response = request({
                                 Url = CONFIG.PC_SERVER_URL:gsub("/request", "/check_status/" .. playerName),
                                 Method = "GET"
@@ -310,45 +267,53 @@ local function setup_auto_accept(expected_pets)
                             if response.StatusCode == 200 then
                                 local status_data = HttpService:JSONDecode(response.Body)
                                 
+                                -- Check if holder reported "insufficient_pets"
                                 if status_data.message == "insufficient_pets" and not webhookSent then
+                                    local received = current - initialPets
+                                    
                                     print("\n" .. ("="):rep(50))
-                                    print("📨 SERVER: Holder ran out of pets!")
+                                    print("📨 SERVER STATUS: Holder out of pets!")
                                     print(("="):rep(50))
                                     print(string.format("   Holder sent: %d pets", status_data.pets_sent or 0))
                                     print(string.format("   Expected: %d pets", expected_pets))
-                                    print(string.format("   Received: %d pets", received))
+                                    print(string.format("   Actually received: %d pets", received))
                                     print(("="):rep(50))
                                     
-                                    sendWebhook(string.format("📨 %s - Holder out of pets - Got %d/%d", 
+                                    sendWebhook(string.format("📨 %s - Holder out of pets - Got %d/%d pets", 
                                         playerName, received, expected_pets))
                                     
+                                    print("\n🔴 Auto-disabling account...")
                                     disableAccount()
                                     webhookSent = true
-                                    return
+                                    return true
                                 end
                             end
+                            return false
                         end)
+                        
+                        if check_success and check_result then
+                            return -- Exit monitor loop
+                        end
                     end
                     
-                    -- ============================================
-                    -- CHECK 3: No trades for too long (ONLY if received > 0)
-                    -- ============================================
-                    if time_since_last_trade > CONFIG.NO_TRADE_TIMEOUT and received > 0 and not webhookSent then
-                        print("\n" .. ("="):rep(50))
-                        print("⚠️ AUTO-COMPLETE: No trades timeout!")
-                        print(("="):rep(50))
-                        print(string.format("   Last trade: %.0fs ago", time_since_last_trade))
-                        print(string.format("   Timeout: %ds", CONFIG.NO_TRADE_TIMEOUT))
-                        print(string.format("   Received: %d/%d pets", received, expected_pets))
-                        print(("="):rep(50))
-                        print("💡 Holder likely ran out of pets!")
+                    -- Check for new pets
+                    if current > last_pet_count then
+                        last_pet_count = current
+                        no_change_time = 0
+                        print(string.format("📦 Received pets! Total: %d/%d", current - initialPets, expected_pets))
+                    else
+                        no_change_time = no_change_time + 0.5
                         
-                        sendWebhook(string.format("⚠️ %s - Auto-complete (no trades %ds) - Got %d/%d", 
-                            playerName, math.floor(time_since_last_trade), received, expected_pets))
-                        
-                        disableAccount()
-                        webhookSent = true
-                        return
+                        if no_change_time >= MAX_WAIT_TIME and not webhookSent then
+                            local received = current - initialPets
+                            print(string.format("⏱️ TIMEOUT: %d/%d pets", received, expected_pets))
+                            
+                            sendWebhook(string.format("⏱️ %s - TIMEOUT - %d/%d pets", playerName, received, expected_pets))
+                            
+                            disableAccount()
+                            webhookSent = true
+                            return
+                        end
                     end
                     
                     -- Trade window monitoring
@@ -359,21 +324,32 @@ local function setup_auto_accept(expected_pets)
                         end
                     elseif was_visible then
                         was_visible = false
+                        
+                        current = count_pets()
+                        local received = current - initialPets
+                        
                         print(string.format("📦 Trade closed! Progress: %d/%d", received, expected_pets))
-                    end
-                    
-                    -- Status update every 30 seconds
-                    if math.floor(tick() - start_time) % 30 == 0 and math.floor(tick() - start_time) > 0 then
-                        print(string.format("\n📊 [%dm] Status: %d/%d pets | Last trade: %.0fs ago", 
-                            elapsed_minutes, received, expected_pets, time_since_last_trade))
+                        
+                        if received >= expected_pets and not webhookSent then
+                            print("\n" .. ("="):rep(50))
+                            print("✅ ALL PETS RECEIVED!")
+                            print(("="):rep(50))
+                            print(string.format("   Received: %d/%d pets", received, expected_pets))
+                            print(("="):rep(50))
+                            
+                            sendWebhook(string.format("✅ %s - COMPLETE - %d pets!", playerName, expected_pets))
+                            
+                            disableAccount()
+                            webhookSent = true
+                        elseif received < expected_pets then
+                            no_change_time = 0
+                        end
                     end
                 end)
             end
         end)
     end)
 end
-
--- ============== MAIN EXECUTION ==============
 
 print("\n🔍 Analyzing inventory (without spawning)...")
 
@@ -411,22 +387,12 @@ pcall(function()
         return
     end
     
-    -- Setup auto-accept with smart completion
     setup_auto_accept(pets_to_request)
+    post_to_pc_server(potions, pets_to_request)
     
-    -- Send request to PC server
-    local server_success = post_to_pc_server(potions, pets_to_request)
-    
-    if server_success then
-        print("\n✅ Waiting for " .. pets_to_request .. " pets")
-        print("💡 Smart completion enabled:")
-        print("   • Will complete when all pets received")
-        print("   • Will auto-complete if holder runs out")
-        print("   • Will auto-complete after " .. CONFIG.NO_TRADE_TIMEOUT .. "s no trades")
-    else
-        print("\n⚠️ Failed to contact PC server, but continuing...")
-    end
+    print("\n✅ Waiting for " .. pets_to_request .. " pets")
+    print("💡 Server status checking enabled")
+    print("   Will auto-disable if holder runs out of pets")
 end)
 
--- Keep script running
 while task.wait(10) do end
