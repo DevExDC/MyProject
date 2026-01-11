@@ -10,7 +10,7 @@ if not getgenv().AgingConfig then
         WEBHOOK_URL = "",
         FARMSYNC_API_KEY = "",
         MAX_AGE_RETRIES = 5,      -- Retry up to 5 times if aging fails
-        AGE_VERIFY_WAIT = 4       -- Wait 3s before verifying age increased
+        AGE_VERIFY_WAIT = 3       -- Wait 3s before verifying age increased
     }
 end
 
