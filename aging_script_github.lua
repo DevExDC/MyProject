@@ -5,8 +5,8 @@
 
 if not getgenv().AgingConfig then
     getgenv().AgingConfig = {
-        PET_KIND = "",
-        RARITY = "",
+        PET_KIND = "winter_2025_christmas_spirit",
+        RARITY = "legendary",
         WEBHOOK_URL = "",
         FARMSYNC_API_KEY = "",
         MAX_AGE_RETRIES = 5,      -- Retry up to 5 times if aging fails
