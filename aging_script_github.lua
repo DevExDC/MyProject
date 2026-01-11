@@ -1,6 +1,7 @@
 -- ============================================
--- SMART AGING SCRIPT - WITH VERIFICATION
--- Ensures pets are ACTUALLY aged before continuing!
+-- SMART AGING SCRIPT - FIXED LOGIC
+-- Only works with specified pet kind!
+-- Disables when no more work to do!
 -- ============================================
 
 if not getgenv().AgingConfig then
@@ -9,8 +10,8 @@ if not getgenv().AgingConfig then
         RARITY = "legendary",
         WEBHOOK_URL = "",
         FARMSYNC_API_KEY = "",
-        MAX_AGE_RETRIES = 5,      -- Retry up to 5 times if aging fails
-        AGE_VERIFY_WAIT = 3       -- Wait 3s before verifying age increased
+        MAX_AGE_RETRIES = 5,
+        AGE_VERIFY_WAIT = 3
     }
 end
 
@@ -38,9 +39,12 @@ if not RARITY_AGE_UPS[rarity_lower] then
 end
 
 print("===========================================")
-print("  SMART AGING SYSTEM - WITH VERIFICATION")
-print("  + Verifies pets are actually aged")
-print("  + Retries if aging fails")
+print("  SMART AGING SYSTEM - FIXED LOGIC")
+print("  + Only works with specified pet")
+print("  + Disables when done")
+print("===========================================")
+print("Pet Kind: " .. CONFIG.PET_KIND)
+print("Rarity: " .. CONFIG.RARITY)
 print("===========================================")
 
 repeat task.wait() until game:IsLoaded()
@@ -61,49 +65,35 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
--- ============== DEHASH FIRST! ==============
+-- Dehash
 print("🔧 Dehashing remotes...")
 for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
     v.Name = i
 end
 print("✅ Remotes dehashed!")
 
--- ============== STARTER ==============
+-- Starter
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 
 local function enter_the_game()
     print("📍 Phase 1: Accepting terms...")
     pcall(function()
-        game:GetService("ReplicatedStorage")
-            :WaitForChild("API")
-            :WaitForChild("MainMenuAPI/AcceptTermsOfServiceAndPrivacyPolicy")
-            :FireServer()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("MainMenuAPI/AcceptTermsOfServiceAndPrivacyPolicy"):FireServer()
     end)
     task.wait(1)
     
     print("📍 Phase 2: Choosing team...")
     pcall(function()
-        local args = {
-            "Parents",
-            {
-                source_for_logging = "intro_sequence",
-                dont_enter_location = true
-            }
-        }
-        game:GetService("ReplicatedStorage")
-            :WaitForChild("API")
-            :WaitForChild("TeamAPI/ChooseTeam")
-            :InvokeServer(unpack(args))
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", {
+            source_for_logging = "intro_sequence",
+            dont_enter_location = true
+        })
     end)
     task.wait(1)
     
     print("📍 Phase 3: Spawning...")
     pcall(function()
-        local args = {"Home"}
-        game:GetService("ReplicatedStorage")
-            :WaitForChild("API")
-            :WaitForChild("TradingServerAPI/IncrementConsecutiveSpawnCounter")
-            :FireServer(unpack(args))
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradingServerAPI/IncrementConsecutiveSpawnCounter"):FireServer("Home")
     end)
     task.wait(2)
     
@@ -115,37 +105,28 @@ local function enter_the_game()
     task.wait(2)
     
     pcall(function()
-        game:GetService("ReplicatedStorage")
-            :WaitForChild("API")
-            :WaitForChild("DailyLoginAPI/ClaimDailyReward")
-            :InvokeServer()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
         UIManager.set_app_visibility("DailyLoginApp", false)
     end)
     
-    print("✅ Fully spawned and ready!")
+    print("✅ Fully spawned!")
 end
 
-print("🎮 Entering game...")
 enter_the_game()
-print("✅ Game entered!")
 
-print("⏳ Waiting 30 seconds before unsubscribing from house...")
+print("⏳ Waiting 30 seconds before unsubscribing...")
 task.wait(30)
 
-print("🏠 Unsubscribing from own house...")
+print("🏠 Unsubscribing from house...")
 pcall(function()
-    local args = {LocalPlayer, true}
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(unpack(args))
-    print("✅ Unsubscribed from own house")
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("HousingAPI/UnsubscribeFromHouse"):InvokeServer(LocalPlayer, true)
 end)
 
-print("⏳ Waiting 10 seconds after unsubscribe...")
 task.wait(10)
-print("✅ Ready to start aging!")
+print("✅ Ready to start!")
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
--- Webhook
 local function sendWebhook(message)
     if CONFIG.WEBHOOK_URL == "" then return end
     pcall(function()
@@ -158,10 +139,9 @@ local function sendWebhook(message)
     end)
 end
 
--- Disable account
 local function disableAccount()
     if CONFIG.FARMSYNC_API_KEY == "" then
-        print("⚠️ No API key, skipping auto-disable")
+        print("⚠️ No API key")
         return
     end
     pcall(function()
@@ -178,7 +158,7 @@ local function disableAccount()
     end)
 end
 
--- ============== GET PET AGE (VERIFICATION) ==============
+-- ============== GET PET AGE ==============
 local function get_pet_age(pet_unique)
     local age = nil
     pcall(function()
@@ -193,6 +173,23 @@ local function get_pet_age(pet_unique)
         end
     end)
     return age
+end
+
+-- ============== COUNT SPECIFIC PETS ONLY ==============
+local function count_specific_pets()
+    local count = 0
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if playerData and playerData.inventory and playerData.inventory.pets then
+            for _, pet in pairs(playerData.inventory.pets) do
+                -- ONLY count the specific pet kind!
+                if pet.kind == CONFIG.PET_KIND then
+                    count = count + 1
+                end
+            end
+        end
+    end)
+    return count
 end
 
 -- Count age potions
@@ -220,9 +217,7 @@ local function get_age_potion_uniques(amount)
             for _, item in pairs(playerData.inventory.food) do
                 if item.kind == "pet_age_potion" then
                     table.insert(potions, item.unique)
-                    if #potions >= amount then
-                        break
-                    end
+                    if #potions >= amount then break end
                 end
             end
         end
@@ -230,7 +225,7 @@ local function get_age_potion_uniques(amount)
     return potions
 end
 
--- Analyze pet inventory
+-- ============== ANALYZE ONLY SPECIFIED PET KIND ==============
 local function analyze_pet_inventory()
     local analysis = {
         normal_pets = {},
@@ -246,32 +241,26 @@ local function analyze_pet_inventory()
         end
         
         for _, pet in pairs(playerData.inventory.pets) do
+            -- ONLY look at the specified pet kind!
             if pet.kind == CONFIG.PET_KIND then
                 local is_neon = pet.properties and pet.properties.neon or false
                 local is_mega = pet.properties and pet.properties.mega or false
                 local age = pet.properties and pet.properties.age or 0
                 
-                if is_mega then
-                    continue
-                end
+                -- Skip mega pets
+                if is_mega then continue end
                 
                 if is_neon then
                     if age == 6 then
                         analysis.full_grown_neons = analysis.full_grown_neons + 1
                     else
-                        table.insert(analysis.neon_pets, {
-                            unique = pet.unique,
-                            age = age
-                        })
+                        table.insert(analysis.neon_pets, {unique = pet.unique, age = age})
                     end
                 else
                     if age == 6 then
                         analysis.full_grown_normal = analysis.full_grown_normal + 1
                     else
-                        table.insert(analysis.normal_pets, {
-                            unique = pet.unique,
-                            age = age
-                        })
+                        table.insert(analysis.normal_pets, {unique = pet.unique, age = age})
                     end
                 end
             end
@@ -281,7 +270,7 @@ local function analyze_pet_inventory()
     return analysis
 end
 
--- Get full grown normal pets
+-- Get full grown normals (ONLY specified pet)
 local function get_full_grown_normals()
     local pets = {}
     pcall(function()
@@ -301,7 +290,7 @@ local function get_full_grown_normals()
     return pets
 end
 
--- Get full grown neon pets
+-- Get full grown neons (ONLY specified pet)
 local function get_full_grown_neons()
     local neons = {}
     pcall(function()
@@ -325,161 +314,160 @@ end
 -- Equip pet
 local function equip_pet(pet_unique)
     pcall(function()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(
-            pet_unique,
-            {
-                use_sound_delay = true,
-                equip_as_last = false
-            }
-        )
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
+            use_sound_delay = true,
+            equip_as_last = false
+        })
     end)
 end
 
--- ============== FRIEND'S FAST CONSUME LOGIC ==============
-
+-- Feed potions fast
 local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_array)
-    -- Step 1: Equip main potion
-    local function equip_potion(working_potion_unique)
-        local args = {
-            tostring(working_potion_unique),
-            {
-                use_sound_delay = false,
-                equip_as_last = false
-            }
-        }
-        game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(unpack(args))
+    local function equip_potion(potion_unique)
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(tostring(potion_unique), {
+            use_sound_delay = false,
+            equip_as_last = false
+        })
         task.wait(1)
     end
     
-    -- Step 2: Create objects (feed potions)
-    local function create_objects(pet_unique, working_potion_unique, sub_potions_array)
-        local args = {
+    local function create_objects(pet_unique, potion_unique, sub_potions)
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(
             "__Enum_PetObjectCreatorType_2",
             {
-                additional_consume_uniques = sub_potions_array,
+                additional_consume_uniques = sub_potions,
                 pet_unique = pet_unique,
-                unique_id = working_potion_unique
+                unique_id = potion_unique
             }
-        }
-        game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(unpack(args))
+        )
     end
     
-    -- Step 3: Fast consume (skip animation!)
     local function fast_consume(pet_unique)
         local potion_object = workspace:WaitForChild("PetObjects"):FindFirstChild("AgePotion")
         if potion_object then
-            local args = {
-                potion_object,
-                pet_unique
-            }
-            game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(unpack(args))
+            ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(potion_object, pet_unique)
         end
     end
     
-    -- Execute the sequence
-    print("   ❤️ Equip Main Potion!")
+    print("   ❤️ Equip Potion")
     equip_potion(working_potion_unique)
     
-    print("   ⚙️ Created Objects!")
+    print("   ⚙️ Feed")
     create_objects(pet_unique, working_potion_unique, sub_potions_array)
     task.wait(1)
     
-    print("   🚀 Fast Consume!")
+    print("   🚀 Fast Consume")
     fast_consume(pet_unique)
     task.wait(1)
 end
 
--- ============== AGE UP PET WITH VERIFICATION ==============
+-- Age up with verification
 local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_age)
     local initial_age = get_pet_age(pet_unique)
     
     if not initial_age then
-        print("   ❌ Failed to get pet age!")
+        print("   ❌ Can't get pet age")
         return false
     end
     
-    print(string.format("   📊 Starting age: %d → Target: %d", initial_age, expected_final_age))
+    print(string.format("   📊 Age: %d → %d", initial_age, expected_final_age))
     
-    -- Try up to MAX_AGE_RETRIES times
     for attempt = 1, CONFIG.MAX_AGE_RETRIES do
         if attempt > 1 then
-            print(string.format("   🔄 Retry attempt %d/%d...", attempt, CONFIG.MAX_AGE_RETRIES))
+            print(string.format("   🔄 Retry %d/%d", attempt, CONFIG.MAX_AGE_RETRIES))
         end
         
-        -- Equip pet
         equip_pet(pet_unique)
-        print("   ✅ Pet equipped!")
+        print("   ✅ Equipped")
         task.wait(1)
         
-        -- Prepare potions (main + additional)
         local main_potion = potion_uniques[1]
         local sub_potions = {}
         for i = 2, #potion_uniques do
             table.insert(sub_potions, potion_uniques[i])
         end
         
-        print(string.format("   🍼 Feeding %d potions with fast consume...", #potion_uniques))
+        print(string.format("   🍼 Feeding %d potions", #potion_uniques))
         feed_potions_fast(pet_unique, main_potion, sub_potions)
         
-        -- Wait for server to process
-        print("   ⏳ Waiting for server to process...")
+        print("   ⏳ Verifying...")
         task.wait(CONFIG.AGE_VERIFY_WAIT)
         
-        -- VERIFY: Check if age actually increased
         local current_age = get_pet_age(pet_unique)
         
         if not current_age then
-            print("   ⚠️ Failed to verify age, assuming success...")
+            print("   ⚠️ Can't verify, assuming success")
             return true
         end
         
         if current_age >= expected_final_age then
-            print(string.format("   ✅ SUCCESS! Age: %d → %d", initial_age, current_age))
+            print(string.format("   ✅ SUCCESS! %d → %d", initial_age, current_age))
             return true
         else
-            print(string.format("   ⚠️ Age did not increase! Still at age %d (expected %d)", current_age, expected_final_age))
-            
+            print(string.format("   ⚠️ Still age %d", current_age))
             if attempt < CONFIG.MAX_AGE_RETRIES then
-                print("   🔄 Retrying...")
                 task.wait(2)
-            else
-                print("   ❌ FAILED after max retries!")
-                return false
             end
         end
     end
     
+    print("   ❌ FAILED after retries")
     return false
 end
 
 -- Create neon
 local function create_neon(pet_uniques)
-    if #pet_uniques < 4 then
-        return false
-    end
+    if #pet_uniques < 4 then return false end
     
     local success = false
     pcall(function()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(
-            {pet_uniques[1], pet_uniques[2], pet_uniques[3], pet_uniques[4]}
-        )
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/DoNeonFusion"):InvokeServer({
+            pet_uniques[1], pet_uniques[2], pet_uniques[3], pet_uniques[4]
+        })
         success = true
     end)
     return success
 end
 
--- Main execution
-print("\n🔍 Analyzing inventory...")
+-- ============== MAIN EXECUTION ==============
 
-local total_aged = 0
+local function run_aging()
+    print("\n🔍 Checking inventory...")
+
+    -- Check if account has the specified pet
+    local total_pets = count_specific_pets()
+
+    if total_pets == 0 then
+        print("\n❌ NO PETS OF TYPE: " .. CONFIG.PET_KIND)
+        print("   Account has 0 of this pet kind")
+        sendWebhook(string.format("❌ %s - No pets of kind: %s - Disabling", playerName, CONFIG.PET_KIND))
+        disableAccount()
+        return
+    end
+
+    print(string.format("✅ Found %d pets of kind: %s", total_pets, CONFIG.PET_KIND))
+
+    -- Check if account has potions
+    local total_potions = count_age_potions()
+
+    if total_potions == 0 then
+        print("\n❌ NO AGE POTIONS")
+        sendWebhook(string.format("❌ %s - No potions - Disabling", playerName))
+        disableAccount()
+        return
+    end
+
+    print(string.format("✅ Found %d age potions", total_potions))
+
+    local total_aged = 0
 local total_failed = 0
-local total_neons_created = 0
-local total_megas_created = 0
+local total_neons = 0
+local total_megas = 0
 local potions_per_pet = RARITY_AGE_UPS[rarity_lower]
 
-sendWebhook(string.format("🔄 %s - Starting verified aging", playerName))
+sendWebhook(string.format("🔄 %s - Starting: %d %s pets, %d potions", 
+    playerName, total_pets, CONFIG.PET_KIND, total_potions))
 
--- CONTINUOUS LOOP WITH STRICT PRIORITY
 local cycle = 0
 local MAX_CYCLES = 100
 
@@ -490,185 +478,120 @@ while cycle < MAX_CYCLES do
     local analysis = analyze_pet_inventory()
     local potions = count_age_potions()
     
-    print(string.format("📊 Status:"))
+    print(string.format("📊 %s:", CONFIG.PET_KIND))
     print(string.format("   Potions: %d", potions))
-    print(string.format("   Normal pets (not age 6): %d", #analysis.normal_pets))
-    print(string.format("   Full grown normals: %d", analysis.full_grown_normal))
-    print(string.format("   Neon pets (not age 6): %d", #analysis.neon_pets))
-    print(string.format("   Full grown neons: %d", analysis.full_grown_neons))
+    print(string.format("   Normal (not age 6): %d", #analysis.normal_pets))
+    print(string.format("   Normal (age 6): %d", analysis.full_grown_normal))
+    print(string.format("   Neon (not age 6): %d", #analysis.neon_pets))
+    print(string.format("   Neon (age 6): %d", analysis.full_grown_neons))
     
     local did_something = false
     
-    -- PRIORITY 1: Age ALL normal pets to full grown
+    -- ============================================
+    -- PRIORITY 1: Age normal pets
+    -- ============================================
     if #analysis.normal_pets > 0 and potions >= potions_per_pet then
-        print("\n📦 PRIORITY 1: Aging normal pets to full grown...")
+        print("\n📦 PRIORITY 1: Aging normal pets...")
         
-        while true do
-            analysis = analyze_pet_inventory()
-            potions = count_age_potions()
+        local pet = analysis.normal_pets[1]
+        local potion_batch = get_age_potion_uniques(potions_per_pet)
+        
+        if #potion_batch >= potions_per_pet then
+            print(string.format("   Aging pet (age: %d)", pet.age))
             
-            if #analysis.normal_pets == 0 then
-                print("   ✅ All normal pets are full grown!")
-                break
-            end
-            
-            if potions < potions_per_pet then
-                print(string.format("   ⚠️ Not enough potions (%d/%d)", potions, potions_per_pet))
-                break
-            end
-            
-            local pet = analysis.normal_pets[1]
-            local potion_batch = get_age_potion_uniques(potions_per_pet)
-            
-            if #potion_batch < potions_per_pet then
-                print("   ⚠️ Failed to get potions")
-                break
-            end
-            
-            print(string.format("\n   Aging normal pet (current age: %d)", pet.age))
-            
-            -- AGE WITH VERIFICATION
             local success = age_up_pet_verified(pet.unique, potion_batch, 6)
             
             if success then
                 total_aged = total_aged + 1
             else
                 total_failed = total_failed + 1
-                print("   ❌ Pet aging failed after retries, skipping...")
             end
             
+            did_something = true
             task.wait(2)
+            continue
         end
-        
-        did_something = true
-        task.wait(2)
-        continue
     end
     
-    -- PRIORITY 2: Make neons
+    -- ============================================
+    -- PRIORITY 2: Make neons from full grown normals
+    -- ============================================
     if analysis.full_grown_normal >= 4 then
-        print("\n🌟 PRIORITY 2: Creating neons...")
+        print("\n🌟 PRIORITY 2: Making neon...")
         
-        while true do
-            analysis = analyze_pet_inventory()
-            
-            if analysis.full_grown_normal < 4 then
-                print("   ✅ Made all possible neons!")
-                break
-            end
-            
-            local full_grown = get_full_grown_normals()
-            
-            if #full_grown < 4 then
-                break
-            end
-            
+        local full_grown = get_full_grown_normals()
+        
+        if #full_grown >= 4 then
             if create_neon(full_grown) then
                 print("   ✅ Neon created!")
-                total_neons_created = total_neons_created + 1
+                total_neons = total_neons + 1
+                did_something = true
                 task.wait(2)
-            else
-                print("   ❌ Failed to create neon")
-                break
+                continue
             end
         end
-        
-        did_something = true
-        task.wait(2)
-        continue
     end
     
-    -- PRIORITY 3: Age ALL neon pets
+    -- ============================================
+    -- PRIORITY 3: Age neon pets
+    -- ============================================
     if #analysis.neon_pets > 0 and potions >= potions_per_pet then
         print("\n💎 PRIORITY 3: Aging neon pets...")
         
-        while true do
-            analysis = analyze_pet_inventory()
-            potions = count_age_potions()
+        local pet = analysis.neon_pets[1]
+        local potion_batch = get_age_potion_uniques(potions_per_pet)
+        
+        if #potion_batch >= potions_per_pet then
+            print(string.format("   Aging neon (age: %d)", pet.age))
             
-            if #analysis.neon_pets == 0 then
-                print("   ✅ All neon pets are full grown!")
-                break
-            end
-            
-            if potions < potions_per_pet then
-                print(string.format("   ⚠️ Not enough potions (%d/%d)", potions, potions_per_pet))
-                break
-            end
-            
-            local pet = analysis.neon_pets[1]
-            local potion_batch = get_age_potion_uniques(potions_per_pet)
-            
-            if #potion_batch < potions_per_pet then
-                print("   ⚠️ Failed to get potions")
-                break
-            end
-            
-            print(string.format("\n   Aging NEON pet (current age: %d)", pet.age))
-            
-            -- AGE WITH VERIFICATION
             local success = age_up_pet_verified(pet.unique, potion_batch, 6)
             
             if success then
                 total_aged = total_aged + 1
             else
                 total_failed = total_failed + 1
-                print("   ❌ Pet aging failed after retries, skipping...")
             end
             
+            did_something = true
             task.wait(2)
+            continue
         end
-        
-        did_something = true
-        task.wait(2)
-        continue
     end
     
-    -- PRIORITY 4: Make megas
+    -- ============================================
+    -- PRIORITY 4: Make megas from full grown neons
+    -- ============================================
     if analysis.full_grown_neons >= 4 then
-        print("\n🔥 PRIORITY 4: Creating megas...")
+        print("\n🔥 PRIORITY 4: Making mega...")
         
-        while true do
-            analysis = analyze_pet_inventory()
-            
-            if analysis.full_grown_neons < 4 then
-                print("   ✅ Made all possible megas!")
-                break
-            end
-            
-            local full_grown_neons = get_full_grown_neons()
-            
-            if #full_grown_neons < 4 then
-                break
-            end
-            
+        local full_grown_neons = get_full_grown_neons()
+        
+        if #full_grown_neons >= 4 then
             if create_neon(full_grown_neons) then
-                print("   ✅ MEGA created!")
-                total_megas_created = total_megas_created + 1
+                print("   ✅ Mega created!")
+                total_megas = total_megas + 1
+                did_something = true
                 task.wait(2)
-            else
-                print("   ❌ Failed to create mega")
-                break
+                continue
             end
         end
-        
-        did_something = true
-        task.wait(2)
-        continue
     end
     
+    -- ============================================
     -- PRIORITY 5: Use leftover potions
+    -- ============================================
     potions = count_age_potions()
-    if potions > 0 then
+    if potions > 0 and potions < potions_per_pet then
         analysis = analyze_pet_inventory()
         
+        -- Try to use leftovers on non-age-6 pets
         if #analysis.normal_pets > 0 then
-            local target_pet = analysis.normal_pets[1]
-            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+            local pet = analysis.normal_pets[1]
+            local potion_batch = get_age_potion_uniques(potions)
             
-            if #potion_batch > 0 then
-                print(string.format("\n🔄 LEFTOVER: Using %d potions on normal pet", #potion_batch))
-                local success = age_up_pet_verified(target_pet.unique, potion_batch, target_pet.age + #potion_batch)
+            if #potion_batch > 0 and pet.age < 6 then
+                print(string.format("\n🔄 LEFTOVER: Using %d potions", #potion_batch))
+                local success = age_up_pet_verified(pet.unique, potion_batch, pet.age + #potion_batch)
                 
                 if success then
                     total_aged = total_aged + 1
@@ -680,15 +603,13 @@ while cycle < MAX_CYCLES do
                 task.wait(2)
                 continue
             end
-        end
-        
-        if #analysis.neon_pets > 0 then
-            local target_neon = analysis.neon_pets[1]
-            local potion_batch = get_age_potion_uniques(math.min(potions, potions_per_pet))
+        elseif #analysis.neon_pets > 0 then
+            local pet = analysis.neon_pets[1]
+            local potion_batch = get_age_potion_uniques(potions)
             
-            if #potion_batch > 0 then
-                print(string.format("\n🔄 LEFTOVER: Using %d potions on neon pet", #potion_batch))
-                local success = age_up_pet_verified(target_neon.unique, potion_batch, target_neon.age + #potion_batch)
+            if #potion_batch > 0 and pet.age < 6 then
+                print(string.format("\n🔄 LEFTOVER: Using %d potions on neon", #potion_batch))
+                local success = age_up_pet_verified(pet.unique, potion_batch, pet.age + #potion_batch)
                 
                 if success then
                     total_aged = total_aged + 1
@@ -703,9 +624,27 @@ while cycle < MAX_CYCLES do
         end
     end
     
-    -- NO MORE WORK
+    -- ============================================
+    -- NO MORE WORK - DISABLE!
+    -- ============================================
     if not did_something then
-        print("\n✅ No more work to do!")
+        local final_potions = count_age_potions()
+        local final_analysis = analyze_pet_inventory()
+        
+        -- Check if all pets are age 6
+        local all_age_6 = (#final_analysis.normal_pets == 0) and 
+                          (#final_analysis.neon_pets == 0) and 
+                          (final_analysis.full_grown_normal + final_analysis.full_grown_neons > 0)
+        
+        print("\n✅ NO MORE WORK!")
+        print(string.format("   Remaining potions: %d", final_potions))
+        
+        if all_age_6 then
+            print("   All pets are age 6!")
+        elseif final_potions < potions_per_pet then
+            print(string.format("   Not enough potions (need %d)", potions_per_pet))
+        end
+        
         break
     end
 end
@@ -714,21 +653,29 @@ end
 local final_potions = count_age_potions()
 
 print("\n" .. ("="):rep(50))
-print("✅ AGING COMPLETE!")
+print("✅ COMPLETE!")
 print(("="):rep(50))
-print(string.format("   Pets aged successfully: %d", total_aged))
-print(string.format("   Pets failed to age: %d", total_failed))
-print(string.format("   Neons created: %d", total_neons_created))
-print(string.format("   Megas created: %d", total_megas_created))
-print(string.format("   Potions remaining: %d", final_potions))
-print(("="):rep(50))
+print(string.format("   Aged: %d", total_aged))
+print(string.format("   Failed: %d", total_failed))
+    print(string.format("   Neons: %d", total_neons))
+    print(string.format("   Megas: %d", total_megas))
+    print(string.format("   Remaining potions: %d", final_potions))
+    print(("="):rep(50))
+    
+    sendWebhook(string.format("✅ %s - COMPLETE\nAged: %d | Neons: %d | Megas: %d\nRemaining potions: %d", 
+        playerName, total_aged, total_neons, total_megas, final_potions))
+    
+    print("\n🔴 Disabling account...")
+    disableAccount()
+    
+    print("\n========================================")
+    print("✅ SCRIPT COMPLETE & ACCOUNT DISABLED")
+    print("========================================")
+end
 
-sendWebhook(string.format("✅ %s - COMPLETE - Aged: %d, Failed: %d, Neons: %d, Megas: %d", 
-    playerName, total_aged, total_failed, total_neons_created, total_megas_created))
-
-print("\n🔴 Disabling account...")
-disableAccount()
+-- Run the aging function
+run_aging()
 
 print("\n========================================")
-print("✅ SCRIPT COMPLETE & ACCOUNT DISABLED")
+print("✅ SCRIPT FINISHED")
 print("========================================")
