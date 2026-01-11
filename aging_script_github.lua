@@ -244,10 +244,10 @@ local function analyze_pet_inventory()
             -- ONLY look at the specified pet kind!
             if pet.kind == CONFIG.PET_KIND then
                 local is_neon = pet.properties and pet.properties.neon or false
-                local is_mega = pet.properties and pet.properties.mega or false
+                local is_mega = pet.properties and pet.properties.mega_neon or false
                 local age = pet.properties and pet.properties.age or 0
                 
-                -- Skip mega pets
+                -- Skip mega pets (they're already done!)
                 if is_mega then continue end
                 
                 if is_neon then
@@ -279,8 +279,10 @@ local function get_full_grown_normals()
             for _, pet in pairs(playerData.inventory.pets) do
                 if pet.kind == CONFIG.PET_KIND then
                     local is_neon = pet.properties and pet.properties.neon
+                    local is_mega = pet.properties and pet.properties.mega_neon
                     local age = pet.properties and pet.properties.age or 0
-                    if not is_neon and age == 6 then
+                    -- Only normal pets (not neon, not mega) that are age 6
+                    if not is_neon and not is_mega and age == 6 then
                         table.insert(pets, pet.unique)
                     end
                 end
@@ -299,8 +301,9 @@ local function get_full_grown_neons()
             for _, pet in pairs(playerData.inventory.pets) do
                 if pet.kind == CONFIG.PET_KIND then
                     local is_neon = pet.properties and pet.properties.neon
-                    local is_mega = pet.properties and pet.properties.mega
+                    local is_mega = pet.properties and pet.properties.mega_neon
                     local age = pet.properties and pet.properties.age or 0
+                    -- Only neon pets (not mega) that are age 6
                     if is_neon and not is_mega and age == 6 then
                         table.insert(neons, pet.unique)
                     end
@@ -514,10 +517,29 @@ while cycle < MAX_CYCLES do
     end
     
     -- ============================================
-    -- PRIORITY 2: Make neons from full grown normals
+    -- PRIORITY 2: Make MEGAS from full grown neons (MOVED UP!)
+    -- ============================================
+    if analysis.full_grown_neons >= 4 then
+        print("\n🔥 PRIORITY 2: Making mega...")
+        
+        local full_grown_neons = get_full_grown_neons()
+        
+        if #full_grown_neons >= 4 then
+            if create_neon(full_grown_neons) then
+                print("   ✅ Mega created!")
+                total_megas = total_megas + 1
+                did_something = true
+                task.wait(2)
+                continue
+            end
+        end
+    end
+    
+    -- ============================================
+    -- PRIORITY 3: Make neons from full grown normals
     -- ============================================
     if analysis.full_grown_normal >= 4 then
-        print("\n🌟 PRIORITY 2: Making neon...")
+        print("\n🌟 PRIORITY 3: Making neon...")
         
         local full_grown = get_full_grown_normals()
         
@@ -533,10 +555,10 @@ while cycle < MAX_CYCLES do
     end
     
     -- ============================================
-    -- PRIORITY 3: Age neon pets
+    -- PRIORITY 4: Age neon pets
     -- ============================================
     if #analysis.neon_pets > 0 and potions >= potions_per_pet then
-        print("\n💎 PRIORITY 3: Aging neon pets...")
+        print("\n💎 PRIORITY 4: Aging neon pets...")
         
         local pet = analysis.neon_pets[1]
         local potion_batch = get_age_potion_uniques(potions_per_pet)
@@ -555,25 +577,6 @@ while cycle < MAX_CYCLES do
             did_something = true
             task.wait(2)
             continue
-        end
-    end
-    
-    -- ============================================
-    -- PRIORITY 4: Make megas from full grown neons
-    -- ============================================
-    if analysis.full_grown_neons >= 4 then
-        print("\n🔥 PRIORITY 4: Making mega...")
-        
-        local full_grown_neons = get_full_grown_neons()
-        
-        if #full_grown_neons >= 4 then
-            if create_neon(full_grown_neons) then
-                print("   ✅ Mega created!")
-                total_megas = total_megas + 1
-                did_something = true
-                task.wait(2)
-                continue
-            end
         end
     end
     
