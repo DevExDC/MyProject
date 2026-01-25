@@ -1,7 +1,7 @@
 --[[
-    SUCCESS Auto-Trade Script - PETS + PET WEARS
-    Trades pets AND pet wears together
-    v5.0.0 - Added pet wear support
+    SUCCESS Auto-Trade Script - PETS + PET WEARS + GIFTS
+    Trades pets, pet wears, AND gifts together
+    v6.0.0 - Added gift support
 ]]
 
 repeat task.wait() until game:IsLoaded()
@@ -27,8 +27,10 @@ local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 getgenv().Config = getgenv().Config or {
     usernames = {},
     pets_to_trade = {},          -- Pet kinds to trade
-    pet_wears_to_trade = {},     -- Pet wear kinds to trade (NEW!)
-    trade_all_pet_wears = false, -- Set true to trade ALL pet wears (NEW!)
+    pet_wears_to_trade = {},     -- Pet wear kinds to trade
+    gifts_to_trade = {},         -- Gift kinds to trade (NEW!)
+    trade_all_pet_wears = false, -- Set true to trade ALL pet wears
+    trade_all_gifts = false,     -- Set true to trade ALL gifts (NEW!)
     Webhook = "",
     FARMSYNC_API_KEY = ""
 }
@@ -36,12 +38,13 @@ getgenv().Config = getgenv().Config or {
 local config = getgenv().Config
 
 local pets_unique_ids = {}
-local pet_wears_unique_ids = {}  -- NEW!
+local pet_wears_unique_ids = {}
+local gifts_unique_ids = {}  -- NEW!
 local trade_status = false
 
 print("===========================================")
-print("  SUCCESS Auto-Trade System v5.0.0")
-print("  PETS + PET WEARS TOGETHER!")
+print("  SUCCESS Auto-Trade System v6.0.0")
+print("  PETS + PET WEARS + GIFTS!")
 print("===========================================")
 
 if #config.pets_to_trade > 0 then
@@ -57,6 +60,15 @@ elseif #config.pet_wears_to_trade > 0 then
     print("Pet Wears to Trade:")
     for i, wear_kind in ipairs(config.pet_wears_to_trade) do
         print(string.format("  [%d] %s", i, wear_kind))
+    end
+end
+
+if config.trade_all_gifts then
+    print("Gifts: ALL")
+elseif #config.gifts_to_trade > 0 then
+    print("Gifts to Trade:")
+    for i, gift_kind in ipairs(config.gifts_to_trade) do
+        print(string.format("  [%d] %s", i, gift_kind))
     end
 end
 
@@ -186,7 +198,7 @@ local function add_item_to_trade(unique_id)
 end
 
 -- ============================================
--- GET ALL PET WEARS (NEW!)
+-- GET ALL PET WEARS
 -- ============================================
 local function get_all_pet_wears()
     local all_wears = {}
@@ -245,6 +257,65 @@ local function get_all_pet_wears()
     end
     
     return all_wears, total_wear_count
+end
+
+-- ============================================
+-- GET ALL GIFTS (NEW!)
+-- ============================================
+local function get_all_gifts()
+    local all_gifts = {}
+    local gift_counts = {}
+    local total_gift_count = 0
+    
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if not playerData or not playerData.inventory then return end
+        
+        local gift_inventory = playerData.inventory.gifts
+        
+        if not gift_inventory then return end
+        
+        -- Count all gifts
+        for _, gift in pairs(gift_inventory) do
+            total_gift_count = total_gift_count + 1
+        end
+        
+        -- Collect gifts
+        if config.trade_all_gifts then
+            -- Trade ALL gifts
+            for _, gift in pairs(gift_inventory) do
+                table.insert(all_gifts, gift.unique)
+                gift_counts[gift.kind] = (gift_counts[gift.kind] or 0) + 1
+            end
+        else
+            -- Trade only specified gifts
+            for _, gift in pairs(gift_inventory) do
+                for _, targetKind in ipairs(config.gifts_to_trade) do
+                    if gift.kind == targetKind then
+                        table.insert(all_gifts, gift.unique)
+                        gift_counts[targetKind] = (gift_counts[targetKind] or 0) + 1
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- Print breakdown
+    if total_gift_count > 0 then
+        print(string.format("\n🎁 Gifts Summary:"))
+        print(string.format("   • Total gifts: %d", total_gift_count))
+        print(string.format("   • Matching target gifts: %d", #all_gifts))
+        
+        if #all_gifts > 0 then
+            print("   Breakdown by type:")
+            for kind, count in pairs(gift_counts) do
+                print(string.format("   • %s: %d", kind, count))
+            end
+        end
+    end
+    
+    return all_gifts, total_gift_count
 end
 
 -- Get ALL pets of ALL specified types
@@ -350,15 +421,44 @@ local function count_pet_wears_in_inventory()
     return count
 end
 
+-- Count gifts (NEW!)
+local function count_gifts_in_inventory()
+    local count = 0
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if not playerData or not playerData.inventory then return end
+        
+        local gift_inventory = playerData.inventory.gifts
+        
+        if not gift_inventory then return end
+        
+        if config.trade_all_gifts then
+            for _ in pairs(gift_inventory) do
+                count = count + 1
+            end
+        else
+            for _, gift in pairs(gift_inventory) do
+                for _, targetKind in ipairs(config.gifts_to_trade) do
+                    if gift.kind == targetKind then
+                        count = count + 1
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    return count
+end
+
 -- ============================================
--- AUTO-TRADE WITH PETS + WEARS
+-- AUTO-TRADE WITH PETS + WEARS + GIFTS
 -- ============================================
 local function autotrade(username)
     if trade_status then
         return false
     end
     
-    if #pets_unique_ids == 0 and #pet_wears_unique_ids == 0 then
+    if #pets_unique_ids == 0 and #pet_wears_unique_ids == 0 and #gifts_unique_ids == 0 then
         print("No items left to trade")
         return true
     end
@@ -379,7 +479,8 @@ local function autotrade(username)
         -- Count items BEFORE trade
         local pets_before = count_pets_in_inventory()
         local wears_before = count_pet_wears_in_inventory()
-        print(string.format("📦 Before trade - Pets: %d | Wears: %d", pets_before, wears_before))
+        local gifts_before = count_gifts_in_inventory()
+        print(string.format("📦 Before - Pets: %d | Wears: %d | Gifts: %d", pets_before, wears_before, gifts_before))
         
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
         
@@ -422,8 +523,8 @@ local function autotrade(username)
         print("✅ Trade window opened")
         task.wait(1)
         
-        -- Add items to trade (max 18 total - pets + wears combined!)
-        local total_items = #pets_unique_ids + #pet_wears_unique_ids
+        -- Add items to trade (max 18 total - pets + wears + gifts combined!)
+        local total_items = #pets_unique_ids + #pet_wears_unique_ids + #gifts_unique_ids
         local items_to_add = math.min(total_items, 18)
         
         print(string.format("📦 Adding %d items to trade...", items_to_add))
@@ -443,6 +544,15 @@ local function autotrade(username)
         for i = 1, #pet_wears_unique_ids do
             if pet_wears_unique_ids[i] and items_added < 18 then
                 add_item_to_trade(pet_wears_unique_ids[i])
+                items_added = items_added + 1
+                task.wait(0.3)
+            end
+        end
+        
+        -- Add gifts if space remaining (NEW!)
+        for i = 1, #gifts_unique_ids do
+            if gifts_unique_ids[i] and items_added < 18 then
+                add_item_to_trade(gifts_unique_ids[i])
                 items_added = items_added + 1
                 task.wait(0.3)
             end
@@ -480,14 +590,16 @@ local function autotrade(username)
         -- Count items AFTER trade
         local pets_after = count_pets_in_inventory()
         local wears_after = count_pet_wears_in_inventory()
+        local gifts_after = count_gifts_in_inventory()
         
         local pets_traded = pets_before - pets_after
         local wears_traded = wears_before - wears_after
+        local gifts_traded = gifts_before - gifts_after
         
-        print(string.format("📦 After trade - Pets: %d | Wears: %d", pets_after, wears_after))
-        print(string.format("✅ Traded - Pets: %d | Wears: %d", pets_traded, wears_traded))
+        print(string.format("📦 After - Pets: %d | Wears: %d | Gifts: %d", pets_after, wears_after, gifts_after))
+        print(string.format("✅ Traded - Pets: %d | Wears: %d | Gifts: %d", pets_traded, wears_traded, gifts_traded))
         
-        if pets_traded > 0 or wears_traded > 0 then
+        if pets_traded > 0 or wears_traded > 0 or gifts_traded > 0 then
             -- Remove traded items from lists
             for i = 1, pets_traded do
                 table.remove(pets_unique_ids, 1)
@@ -495,13 +607,17 @@ local function autotrade(username)
             for i = 1, wears_traded do
                 table.remove(pet_wears_unique_ids, 1)
             end
+            for i = 1, gifts_traded do
+                table.remove(gifts_unique_ids, 1)
+            end
             
-            print(string.format("📋 Remaining - Pets: %d | Wears: %d", #pets_unique_ids, #pet_wears_unique_ids))
+            print(string.format("📋 Remaining - Pets: %d | Wears: %d | Gifts: %d", #pets_unique_ids, #pet_wears_unique_ids, #gifts_unique_ids))
             success_flag = true
         else
             warn("⚠️ No items traded! Refreshing lists...")
             pets_unique_ids, _ = get_all_pets()
             pet_wears_unique_ids, _ = get_all_pet_wears()
+            gifts_unique_ids, _ = get_all_gifts()
             success_flag = false
         end
         
@@ -516,6 +632,7 @@ print(string.format("\n📋 Configuration:"))
 print(string.format("   • Holders: %s", table.concat(config.usernames, " or ")))
 print(string.format("   • Pet Types: %d", #config.pets_to_trade))
 print(string.format("   • Pet Wears: %s", config.trade_all_pet_wears and "ALL" or tostring(#config.pet_wears_to_trade)))
+print(string.format("   • Gifts: %s", config.trade_all_gifts and "ALL" or tostring(#config.gifts_to_trade)))
 print(string.format("   • Webhook: %s\n", config.Webhook ~= "" and "Enabled" or "Disabled"))
 
 -- Start auto-systems
@@ -559,8 +676,9 @@ print(string.format("└──────────────────�
 -- Get ALL items
 pets_unique_ids, total_pets = get_all_pets()
 pet_wears_unique_ids, total_wears = get_all_pet_wears()
+gifts_unique_ids, total_gifts = get_all_gifts()
 
-local total_items = #pets_unique_ids + #pet_wears_unique_ids
+local total_items = #pets_unique_ids + #pet_wears_unique_ids + #gifts_unique_ids
 
 if total_items == 0 then
     warn("❌ No items to trade!")
@@ -569,10 +687,12 @@ if total_items == 0 then
     return
 end
 
-print(string.format("\n✅ Total items to trade: %d (Pets: %d | Wears: %d)", total_items, #pets_unique_ids, #pet_wears_unique_ids))
+print(string.format("\n✅ Total items to trade: %d (Pets: %d | Wears: %d | Gifts: %d)", 
+    total_items, #pets_unique_ids, #pet_wears_unique_ids, #gifts_unique_ids))
 
 local initial_pet_count = #pets_unique_ids
 local initial_wear_count = #pet_wears_unique_ids
+local initial_gift_count = #gifts_unique_ids
 
 -- Execute trades
 local tradesNeeded = math.ceil(total_items / 18)
@@ -583,7 +703,7 @@ local maxTrades = tradesNeeded + 10
 local consecutiveFailures = 0
 local maxConsecutiveFailures = 3
 
-while (#pets_unique_ids > 0 or #pet_wears_unique_ids > 0) and tradeAttempts < maxTrades do
+while (#pets_unique_ids > 0 or #pet_wears_unique_ids > 0 or #gifts_unique_ids > 0) and tradeAttempts < maxTrades do
     tradeAttempts = tradeAttempts + 1
     
     print(string.format("\n=== Trade Attempt %d ===", tradeAttempts))
@@ -594,8 +714,9 @@ while (#pets_unique_ids > 0 or #pet_wears_unique_ids > 0) and tradeAttempts < ma
         warn(string.format("❌ %s left the game!", selected_holder))
         local pets_traded = initial_pet_count - #pets_unique_ids
         local wears_traded = initial_wear_count - #pet_wears_unique_ids
-        sendWebhook(string.format("❌ %s - Holder left - Traded: Pets %d/%d | Wears %d/%d", 
-            playerName, pets_traded, initial_pet_count, wears_traded, initial_wear_count))
+        local gifts_traded = initial_gift_count - #gifts_unique_ids
+        sendWebhook(string.format("❌ %s - Holder left - Pets: %d/%d | Wears: %d/%d | Gifts: %d/%d", 
+            playerName, pets_traded, initial_pet_count, wears_traded, initial_wear_count, gifts_traded, initial_gift_count))
         break
     end
     
@@ -627,33 +748,37 @@ end
 -- Log completion
 local pets_traded = initial_pet_count - #pets_unique_ids
 local wears_traded = initial_wear_count - #pet_wears_unique_ids
-local total_traded = pets_traded + wears_traded
+local gifts_traded = initial_gift_count - #gifts_unique_ids
+local total_traded = pets_traded + wears_traded + gifts_traded
 
 print("\n┌────────────────────────────────────┐")
 print("│ 🎉 Trading Session Complete!       │")
 print(string.format("│ ✅ Traded to: %s", selected_holder))
-print(string.format("│ ✅ Pets Traded: %d", pets_traded))
-print(string.format("│ ✅ Wears Traded: %d", wears_traded))
-print(string.format("│ ✅ Total Items: %d", total_traded))
+print(string.format("│ ✅ Pets: %d", pets_traded))
+print(string.format("│ ✅ Wears: %d", wears_traded))
+print(string.format("│ ✅ Gifts: %d", gifts_traded))
+print(string.format("│ ✅ Total: %d", total_traded))
 print("└────────────────────────────────────┘\n")
 
-sendWebhook(string.format("✅ %s - COMPLETE\nPets: %d | Wears: %d | Total: %d items to %s", 
-    playerName, pets_traded, wears_traded, total_traded, selected_holder))
+sendWebhook(string.format("✅ %s - COMPLETE\nPets: %d | Wears: %d | Gifts: %d | Total: %d to %s", 
+    playerName, pets_traded, wears_traded, gifts_traded, total_traded, selected_holder))
 
 -- Check if should disable
 local remaining_pets = count_pets_in_inventory()
 local remaining_wears = count_pet_wears_in_inventory()
-local remaining_total = remaining_pets + remaining_wears
+local remaining_gifts = count_gifts_in_inventory()
+local remaining_total = remaining_pets + remaining_wears + remaining_gifts
 
 if remaining_total == 0 then
     print("🔴 All items traded - Disabling account...")
     task.wait(2)
     disableAccount()
-elseif #pets_unique_ids == 0 and #pet_wears_unique_ids == 0 then
+elseif #pets_unique_ids == 0 and #pet_wears_unique_ids == 0 and #gifts_unique_ids == 0 then
     print(string.format("✅ All target items traded - %d other items remain - NOT disabling", remaining_total))
     sendWebhook(string.format("✅ %s - Target items complete - %d other items remain", playerName, remaining_total))
 else
-    print(string.format("⚠️ Still have items to trade - Pets: %d | Wears: %d - NOT disabling", #pets_unique_ids, #pet_wears_unique_ids))
+    print(string.format("⚠️ Still have items - Pets: %d | Wears: %d | Gifts: %d - NOT disabling", 
+        #pets_unique_ids, #pet_wears_unique_ids, #gifts_unique_ids))
 end
 
 print("\n========================================")
