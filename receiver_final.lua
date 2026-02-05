@@ -1,6 +1,6 @@
 -- ============================================
--- RECEIVER - WITH SMART SERVER STATUS
--- Only checks server when holder reports out of pets
+-- RECEIVER - WITH RESOLVE ITEM
+-- Accepts PET_NAME instead of PET_KIND
 -- ============================================
 
 if not getgenv().ReceiverConfig then
@@ -8,7 +8,7 @@ if not getgenv().ReceiverConfig then
         PC_SERVER_URL = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
         WEBHOOK_URL = "",
         RARITY = "legendary",
-        PET_KIND = "winter_2025_christmas_spirit",
+        PET_NAME = "Unicorn",  -- USE PET NAME NOW (e.g., "Unicorn", "Ancient Dragon")
         FARMSYNC_API_KEY = ""
     }
 end
@@ -23,8 +23,8 @@ if not CONFIG.RARITY or CONFIG.RARITY == "" then
     error("❌ Set RARITY!")
 end
 
-if not CONFIG.PET_KIND or CONFIG.PET_KIND == "" then
-    error("❌ Set PET_KIND!")
+if not CONFIG.PET_NAME or CONFIG.PET_NAME == "" then
+    error("❌ Set PET_NAME!")
 end
 
 local RARITY_AGE_UPS = {
@@ -41,8 +41,8 @@ if not RARITY_AGE_UPS[rarity_lower] then
 end
 
 print("===========================================")
-print("  RECEIVER - SMART SERVER STATUS")
-print("  Checks server for holder status")
+print("  RECEIVER - WITH RESOLVE ITEM")
+print("  Pet Name: " .. CONFIG.PET_NAME)
 print("===========================================")
 
 repeat task.wait() until game:IsLoaded()
@@ -70,10 +70,35 @@ for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.
 end
 print("✅ Remotes dehashed!")
 
+local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+local ClientDB = require(ReplicatedStorage.ClientModules.Core.ClientDB)
+
+-- ============================================
+-- RESOLVE ITEM FUNCTION
+-- ============================================
+local function resolveItem(petName)
+    for kind, data in pairs(ClientDB.get_data().pet) do
+        if data.display_name == petName then
+            return kind, data.rarity
+        end
+    end
+    return nil, nil
+end
+
+-- Resolve the pet name to kind at startup
+local PET_KIND, RESOLVED_RARITY = resolveItem(CONFIG.PET_NAME)
+
+if not PET_KIND then
+    error("❌ Could not resolve pet name: " .. CONFIG.PET_NAME)
+end
+
+print("✅ Resolved pet:")
+print("   Name: " .. CONFIG.PET_NAME)
+print("   Kind: " .. PET_KIND)
+print("   Rarity: " .. RESOLVED_RARITY)
+
 -- ============== NO SPAWNING! ==============
 print("⚠️ NOT spawning - waiting for trades without spawn!")
-
-local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
 local function get_player_data()
     return Data.get_data()[tostring(LocalPlayer)]
@@ -191,15 +216,11 @@ local function setup_auto_accept(expected_pets)
             print("✅ Phase 1: Continuous dialog acceptor started")
             while task.wait(0.3) do
                 pcall(function()
-                    -- NO EARLY RETURN - Always accept trades
-                    
-                    -- Check for dialog EVERY loop
                     local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
                     
                     if dialogVisible then
                         print("\n📨 Trade request detected!")
                         
-                        -- Accept from ALL players
                         for _, player in pairs(Players:GetPlayers()) do
                             if player ~= LocalPlayer then
                                 local success = pcall(function()
@@ -267,7 +288,6 @@ local function setup_auto_accept(expected_pets)
                             if response.StatusCode == 200 then
                                 local status_data = HttpService:JSONDecode(response.Body)
                                 
-                                -- Check if holder reported "insufficient_pets"
                                 if status_data.message == "insufficient_pets" and not webhookSent then
                                     local received = current - initialPets
                                     
@@ -292,7 +312,7 @@ local function setup_auto_accept(expected_pets)
                         end)
                         
                         if check_success and check_result then
-                            return -- Exit monitor loop
+                            return
                         end
                     end
                     
@@ -371,7 +391,7 @@ pcall(function()
         return
     end
     
-    local existing_pets = count_specific_pets(CONFIG.PET_KIND)
+    local existing_pets = count_specific_pets(PET_KIND)
     local pets_to_request = total_pets_needed - existing_pets
     
     print("\n📊 Calculation:")
@@ -382,7 +402,7 @@ pcall(function()
     
     if pets_to_request <= 0 then
         print("\n✅ Already have enough pets!")
-        sendWebhook(string.format("✅ %s - Already has %d/%d pets", playerName, existing_pets, total_pets_needed))
+        sendWebhook(string.format("✅ %s - Already has %d/%d %s", playerName, existing_pets, total_pets_needed, CONFIG.PET_NAME))
         disableAccount()
         return
     end
@@ -390,7 +410,7 @@ pcall(function()
     setup_auto_accept(pets_to_request)
     post_to_pc_server(potions, pets_to_request)
     
-    print("\n✅ Waiting for " .. pets_to_request .. " pets")
+    print("\n✅ Waiting for " .. pets_to_request .. " " .. CONFIG.PET_NAME)
     print("💡 Server status checking enabled")
     print("   Will auto-disable if holder runs out of pets")
 end)
