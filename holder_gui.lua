@@ -1,9 +1,20 @@
 -- ============================================
--- HOLDER GUI - PC SERVER VERSION
--- Beautiful UI for managing pet trades
+-- HOLDER GUI - NGROK VERSION
+-- Works with ngrok tunnels for remote access
 -- ============================================
 
-local PC_SERVER_URL = "http://localhost:8080" -- Built-in, no need to configure
+-- CONFIGURATION - Paste your ngrok URL here
+local NGROK_URL = "https://spinelike-lenora-unmovingly.ngrok-free.dev" -- CHANGE THIS to your ngrok URL
+-- Example ngrok URLs:
+--   https://abcd-12-34-56-78.ngrok-free.app
+--   https://your-custom-domain.ngrok.io
+
+-- Remove trailing slash if present
+if NGROK_URL:sub(-1) == "/" then
+    NGROK_URL = NGROK_URL:sub(1, -2)
+end
+
+print("🌐 Using ngrok URL: " .. NGROK_URL)
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
@@ -42,6 +53,9 @@ local stats = {
     total = 0
 }
 
+-- Connection status indicator
+local connectionStatus = "⚠️ Not tested"
+
 -- ============================================
 -- GUI CREATION
 -- ============================================
@@ -55,8 +69,8 @@ ScreenGui.Parent = game:GetService("CoreGui")
 -- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 450, 0, 550)
-MainFrame.Position = UDim2.new(0.5, -225, 0.5, -275)
+MainFrame.Size = UDim2.new(0, 450, 0, 600)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -300)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
@@ -64,17 +78,6 @@ MainFrame.Parent = ScreenGui
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
-
-local UIShadow = Instance.new("ImageLabel")
-UIShadow.Name = "Shadow"
-UIShadow.Size = UDim2.new(1, 30, 1, 30)
-UIShadow.Position = UDim2.new(0, -15, 0, -15)
-UIShadow.BackgroundTransparency = 1
-UIShadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-UIShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-UIShadow.ImageTransparency = 0.7
-UIShadow.ZIndex = 0
-UIShadow.Parent = MainFrame
 
 -- Title Bar
 local TitleBar = Instance.new("Frame")
@@ -100,7 +103,7 @@ Title.Name = "Title"
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "💰 DevEx Holder System"
+Title.Text = "💰 DevEx Holder (ngrok)"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 20
 Title.Font = Enum.Font.GothamBold
@@ -130,7 +133,7 @@ ContentFrame.Size = UDim2.new(1, -20, 1, -70)
 ContentFrame.Position = UDim2.new(0, 10, 0, 60)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.ScrollBarThickness = 4
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 700)
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
 ContentFrame.Parent = MainFrame
 
 local ContentLayout = Instance.new("UIListLayout")
@@ -176,6 +179,35 @@ local function createTextbox(parent, placeholderText, defaultText)
     
     return TextBox
 end
+
+-- Connection Status Section
+local ConnectionSection = createSection("Connection", 0)
+ConnectionSection.Size = UDim2.new(1, 0, 0, 80)
+
+local ConnLabel = Instance.new("TextLabel")
+ConnLabel.Size = UDim2.new(1, -20, 0, 20)
+ConnLabel.Position = UDim2.new(0, 10, 0, 10)
+ConnLabel.BackgroundTransparency = 1
+ConnLabel.Text = "Server: " .. NGROK_URL
+ConnLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+ConnLabel.TextSize = 11
+ConnLabel.Font = Enum.Font.Gotham
+ConnLabel.TextXAlignment = Enum.TextXAlignment.Left
+ConnLabel.Parent = ConnectionSection
+
+local ConnStatus = Instance.new("TextLabel")
+ConnStatus.Size = UDim2.new(1, -20, 0, 40)
+ConnStatus.Position = UDim2.new(0, 10, 0, 35)
+ConnStatus.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+ConnStatus.Text = connectionStatus
+ConnStatus.TextColor3 = Color3.fromRGB(255, 200, 0)
+ConnStatus.TextSize = 12
+ConnStatus.Font = Enum.Font.GothamBold
+ConnStatus.Parent = ConnectionSection
+
+local StatusCorner = Instance.new("UICorner")
+StatusCorner.CornerRadius = UDim.new(0, 6)
+StatusCorner.Parent = ConnStatus
 
 -- Pet Kind Section
 local PetKindSection = createSection("PetKind", 1)
@@ -363,6 +395,23 @@ local CompletedLabel = createStatLabel("✅ Completed: 0")
 local FailedLabel = createStatLabel("❌ Failed: 0")
 local TotalLabel = createStatLabel("📊 Total: 0")
 
+-- Test Connection Button
+local TestButton = Instance.new("TextButton")
+TestButton.Name = "TestButton"
+TestButton.Size = UDim2.new(1, -20, 0, 40)
+TestButton.Position = UDim2.new(0, 10, 0, 0)
+TestButton.BackgroundColor3 = Color3.fromRGB(33, 150, 243)
+TestButton.Text = "🔍 TEST CONNECTION"
+TestButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TestButton.TextSize = 14
+TestButton.Font = Enum.Font.GothamBold
+TestButton.LayoutOrder = 6
+TestButton.Parent = ContentFrame
+
+local TestCorner = Instance.new("UICorner")
+TestCorner.CornerRadius = UDim.new(0, 8)
+TestCorner.Parent = TestButton
+
 -- Start Button
 local StartButton = Instance.new("TextButton")
 StartButton.Name = "StartButton"
@@ -373,7 +422,7 @@ StartButton.Text = "▶️ START MONITORING"
 StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 StartButton.TextSize = 16
 StartButton.Font = Enum.Font.GothamBold
-StartButton.LayoutOrder = 6
+StartButton.LayoutOrder = 7
 StartButton.Parent = ContentFrame
 
 local StartCorner = Instance.new("UICorner")
@@ -388,7 +437,7 @@ StatusLabel.Text = "⏸️ Idle - Click START to begin"
 StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 StatusLabel.TextSize = 12
 StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.LayoutOrder = 7
+StatusLabel.LayoutOrder = 8
 StatusLabel.Parent = ContentFrame
 
 -- Make draggable
@@ -429,6 +478,43 @@ end)
 -- BACKEND FUNCTIONS
 -- ============================================
 
+local function testConnection()
+    ConnStatus.Text = "🔄 Testing..."
+    ConnStatus.TextColor3 = Color3.fromRGB(255, 200, 0)
+    
+    local success, result = pcall(function()
+        local response = request({
+            Url = NGROK_URL .. "/requests",
+            Method = "GET"
+        })
+        
+        return response.StatusCode == 200
+    end)
+    
+    if success and result then
+        connectionStatus = "✅ Connected!"
+        ConnStatus.Text = connectionStatus
+        ConnStatus.TextColor3 = Color3.fromRGB(76, 175, 80)
+        print("✅ Connection test successful!")
+        return true
+    else
+        connectionStatus = "❌ Connection Failed"
+        ConnStatus.Text = connectionStatus
+        ConnStatus.TextColor3 = Color3.fromRGB(220, 50, 50)
+        print("❌ Connection test failed!")
+        print("Make sure:")
+        print("1. Your ngrok tunnel is active")
+        print("2. Server is running on your PC")
+        print("3. NGROK_URL is correct: " .. NGROK_URL)
+        print("4. ngrok is pointing to correct port")
+        return false
+    end
+end
+
+TestButton.MouseButton1Click:Connect(function()
+    testConnection()
+end)
+
 local function updateQueue()
     for _, child in pairs(QueueScroll:GetChildren()) do
         if child:IsA("TextLabel") then
@@ -465,7 +551,7 @@ end
 local function get_pending_requests()
     local success, result = pcall(function()
         local response = request({
-            Url = PC_SERVER_URL .. "/requests",
+            Url = NGROK_URL .. "/requests",
             Method = "GET"
         })
         
@@ -514,7 +600,6 @@ local function get_pets(count)
         -- Neon filter
         if neonEnabled then
             if not (is_neon or is_mega) then
-                print("  Skipped: Not neon/mega")
                 continue
             end
         end
@@ -526,14 +611,12 @@ local function get_pets(count)
             
             -- Make both lowercase for comparison
             if filterRarity ~= petRarity:lower() then
-                print("  Skipped: Rarity mismatch (pet=" .. petRarity .. ", filter=" .. filterRarity .. ")")
                 continue
             end
         end
         
         matched = matched + 1
         table.insert(pets, pet.unique)
-        print("  ✅ Matched pet #" .. matched)
         
         if #pets >= count then
             break
@@ -568,7 +651,7 @@ end
 local function mark_complete(username)
     pcall(function()
         request({
-            Url = PC_SERVER_URL .. "/complete",
+            Url = NGROK_URL .. "/complete",
             Method = "POST",
             Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode({username = username})
@@ -579,7 +662,7 @@ end
 local function trade_to_receiver(username, total_pets_needed)
     StatusLabel.Text = string.format("🔄 Trading to %s (needs %d pets total)...", username, total_pets_needed)
     
-    local BATCH_SIZE = 18 -- Max pets per trade in Adopt Me
+    local BATCH_SIZE = 18
     local pets_traded = 0
     local trade_number = 1
     local had_shortage = false
@@ -592,7 +675,6 @@ local function trade_to_receiver(username, total_pets_needed)
         print(string.format("Progress: %d/%d pets traded", pets_traded, total_pets_needed))
         print(string.format("This batch: %d pets", this_batch))
         
-        -- Check if player still in server
         local target = Players:FindFirstChild(username)
         
         if not target then
@@ -600,69 +682,37 @@ local function trade_to_receiver(username, total_pets_needed)
             StatusLabel.Text = "❌ " .. username .. " left the server!"
             
             if pets_traded > 0 then
-                print(string.format("⚠️ PARTIAL TRADE: Sent %d/%d pets before player left", pets_traded, total_pets_needed))
-                StatusLabel.Text = string.format("⚠️ Partial: %d/%d pets (player left)", pets_traded, total_pets_needed)
-                mark_complete(username) -- Mark as done even if partial
+                mark_complete(username)
             end
             
             return false
         end
         
-        print("✅ Found player: " .. target.Name)
-        
-        -- Get pets for this batch
         local pets = get_pets(this_batch)
         
-        print("Pets found: " .. #pets .. " (need " .. this_batch .. ")")
-        
         if #pets < this_batch then
-            print("❌ NOT ENOUGH PETS IN INVENTORY")
-            
             if #pets > 0 then
-                -- Trade what we have
-                print(string.format("⚠️ Trading partial batch: %d pets instead of %d", #pets, this_batch))
                 this_batch = #pets
                 had_shortage = true
             else
-                -- No pets left at all
                 StatusLabel.Text = string.format("❌ Out of pets! Traded %d/%d total", pets_traded, total_pets_needed)
                 
-                -- Tell receiver we don't have enough
-                pcall(function()
-                    request({
-                        Url = PC_SERVER_URL .. "/status",
-                        Method = "POST",
-                        Headers = {["Content-Type"] = "application/json"},
-                        Body = HttpService:JSONEncode({
-                            username = username,
-                            message = "insufficient_pets",
-                            pets_sent = pets_traded
-                        })
-                    })
-                    print(string.format("📨 Sent status to %s: insufficient_pets (%d sent)", username, pets_traded))
-                end)
-                
                 if pets_traded > 0 then
-                    print(string.format("⚠️ PARTIAL COMPLETION: %d/%d pets", pets_traded, total_pets_needed))
-                    mark_complete(username) -- Mark as done with partial
+                    mark_complete(username)
                 end
                 
                 return false
             end
         end
         
-        print("Sending trade request...")
         StatusLabel.Text = string.format("📤 Trade #%d: Sending to %s...", trade_number, username)
         
         if not send_trade(username) then
-            print("❌ SEND TRADE FAILED")
-            StatusLabel.Text = "❌ Failed to send trade request"
             task.wait(2)
-            continue -- Try again
+            continue
         end
         
-        print("✅ Trade request sent, waiting for window...")
-        task.wait(2) -- Reduced from 3 to 2
+        task.wait(2)
         
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
         
@@ -673,34 +723,22 @@ local function trade_to_receiver(username, total_pets_needed)
         end
         
         if timeout >= 10 then
-            print("❌ TRADE WINDOW TIMEOUT")
-            StatusLabel.Text = "❌ Trade window timeout - retrying..."
             task.wait(2)
-            continue -- Try again
+            continue
         end
         
-        print("✅ Trade window opened")
-        
-        -- Add pets to trade
         for i, petUnique in ipairs(pets) do
             add_pet(petUnique)
-            print("Added pet " .. i .. "/" .. #pets)
             StatusLabel.Text = string.format("📦 Trade #%d: Adding pets... (%d/%d)", trade_number, i, #pets)
-            task.wait(0.2) -- Reduced from 0.3 to 0.2
+            task.wait(0.2)
         end
         
-        print("Accepting trade...")
         StatusLabel.Text = string.format("✅ Trade #%d: Waiting for countdown...", trade_number)
-        task.wait(6) -- 6 second countdown in Adopt Me
+        task.wait(6)
         accept_trade()
-        StatusLabel.Text = string.format("✅ Trade #%d: Accepted!", trade_number)
-        task.wait(0.5) -- Brief wait after accept
-        print("Confirming trade...")
-        StatusLabel.Text = string.format("✅ Trade #%d: Confirming...", trade_number)
+        task.wait(0.5)
         confirm_trade()
-        StatusLabel.Text = string.format("✅ Trade #%d: Confirmed!", trade_number)
         
-        -- Wait for trade to complete
         timeout = 0
         repeat
             task.wait(0.5)
@@ -708,43 +746,24 @@ local function trade_to_receiver(username, total_pets_needed)
         until not tradeGui.Visible or timeout > 20
         
         if timeout > 20 then
-            print("⚠️ CONFIRM TIMEOUT")
-            StatusLabel.Text = "⚠️ Trade confirmation timeout - retrying..."
             task.wait(2)
-            continue -- Try again
+            continue
         end
-        
-        print(string.format("✅ TRADE #%d COMPLETE", trade_number))
         
         pets_traded = pets_traded + this_batch
         trade_number = trade_number + 1
         
         StatusLabel.Text = string.format("✅ Progress: %d/%d pets traded to %s", pets_traded, total_pets_needed, username)
         
-        -- If we had a shortage, stop trying
         if had_shortage then
-            print("⚠️ Stopping due to inventory shortage")
             break
         end
         
-        -- Wait before next trade
         if pets_traded < total_pets_needed then
-            print("Waiting 2 seconds before next trade...")
-            task.wait(2) -- Reduced from 3 to 2
+            task.wait(2)
         end
     end
     
-    if pets_traded >= total_pets_needed then
-        print(string.format("\n🎉 ALL TRADES COMPLETE FOR %s", username))
-        print(string.format("Total: %d pets in %d trades", pets_traded, trade_number - 1))
-        StatusLabel.Text = string.format("🎉 Completed! Traded %d pets to %s", pets_traded, username)
-    else
-        print(string.format("\n⚠️ PARTIAL TRADE FOR %s", username))
-        print(string.format("Total: %d/%d pets in %d trades", pets_traded, total_pets_needed, trade_number - 1))
-        StatusLabel.Text = string.format("⚠️ Partial: %d/%d pets to %s", pets_traded, total_pets_needed, username)
-    end
-    
-    -- Mark as complete on server (even if partial)
     mark_complete(username)
     
     return pets_traded >= total_pets_needed
@@ -771,9 +790,8 @@ local function mainLoop()
         
         if #currentQueue == 0 then
             StatusLabel.Text = "⏳ Waiting for requests..."
-            task.wait(10) -- Only wait when no requests
+            task.wait(10)
         else
-            -- Process ONLY the first request, then recheck
             local request = currentQueue[1]
             stats.total = stats.total + 1
             
@@ -784,11 +802,11 @@ local function mainLoop()
                 processedRequests[request.username] = true
             else
                 stats.failed = stats.failed + 1
-                processedRequests[request.username] = true -- Mark as processed even if failed
+                processedRequests[request.username] = true
             end
             
             updateStats()
-            task.wait(2) -- Brief wait before checking for next request
+            task.wait(2)
         end
     end
 end
@@ -803,6 +821,13 @@ StartButton.MouseButton1Click:Connect(function()
     isRunning = not isRunning
     
     if isRunning then
+        -- Test connection first
+        if not testConnection() then
+            isRunning = false
+            StatusLabel.Text = "❌ Connection failed! Check settings and try again"
+            return
+        end
+        
         StartButton.Text = "⏸️ STOP MONITORING"
         StartButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
         StatusLabel.Text = "✅ Monitoring started!"
@@ -816,3 +841,4 @@ end)
 
 print("✅ Holder GUI Loaded!")
 print("💰 DevEx Holder System Ready")
+print("🌐 ngrok URL: " .. NGROK_URL)
