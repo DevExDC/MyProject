@@ -1,13 +1,23 @@
 -- ============================================
--- SMART AGING SCRIPT - UPDATED
+-- SMART AGING SCRIPT - MULTI-PET SUPPORT
 -- Pet resolved by name (resolveItem)
+-- Supports multiple pet names with fallback
 -- Friend's entry logic + UI disable
 -- Kicks game when done
 -- ============================================
 
 if not getgenv().AgingConfig then
     getgenv().AgingConfig = {
-        PET_NAME = "Christmas Spirit",  -- just put the pet name here, no need for the kind id
+        -- 🐾 Use PET_NAMES for multiple pets (tries in order)
+        PET_NAMES = {
+            "Christmas Spirit",
+            -- "Lunar Dragon",
+            -- "Capybara",
+        },
+        
+        -- OR use PET_NAME for single pet (old way)
+        -- PET_NAME = "Christmas Spirit",
+        
         WEBHOOK_URL = "",
         MAX_AGE_RETRIES = 5,
         AGE_VERIFY_WAIT = 3
@@ -16,8 +26,110 @@ end
 
 local CONFIG = getgenv().AgingConfig
 
+-- ============================================
+-- MULTI-PET NAME RESOLVER
+-- ============================================
+local function findAndSelectPet()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Players = game:GetService("Players")
+    local playerName = Players.LocalPlayer.Name
+    
+    -- resolveItem function
+    local function resolveItem(input)
+        local db = require(ReplicatedStorage
+            :WaitForChild("ClientDB")
+            :WaitForChild("Inventory")
+            :WaitForChild("KindDB"))
+        local search = input:lower()
+        local nameMatch = nil
+
+        for _, v in pairs(db) do
+            if v.kind and v.kind:lower() == search then
+                return v.kind, v, "kind"
+            end
+            if not nameMatch and v.name and v.name:lower() == search then
+                nameMatch = v
+            end
+        end
+
+        if nameMatch then
+            return nameMatch.kind, nameMatch, "name"
+        end
+
+        return nil
+    end
+    
+    -- Count pets of specific kind
+    local function countPets(petKind)
+        local count = 0
+        pcall(function()
+            local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+            local playerData = Data.get_data()[playerName]
+            if playerData and playerData.inventory and playerData.inventory.pets then
+                for _, pet in pairs(playerData.inventory.pets) do
+                    if pet.kind == petKind then
+                        count = count + 1
+                    end
+                end
+            end
+        end)
+        return count
+    end
+    
+    -- Check if using multi-pet mode
+    if CONFIG.PET_NAMES and #CONFIG.PET_NAMES > 0 then
+        print("🔍 Multi-Pet Mode: Searching for available pets...")
+        print("=" .. string.rep("=", 50))
+        
+        -- Try each pet name in order
+        for i, petName in ipairs(CONFIG.PET_NAMES) do
+            print(string.format("\n[%d/%d] Checking: %s", i, #CONFIG.PET_NAMES, petName))
+            
+            local resolved_kind, resolved_data = resolveItem(petName)
+            
+            if resolved_kind then
+                print("  ✅ Found in database!")
+                
+                local count = countPets(resolved_kind)
+                print(string.format("  📊 You have %d of these", count))
+                
+                if count > 0 then
+                    print(string.format("  🎯 SELECTED: %s", petName))
+                    print("=" .. string.rep("=", 50))
+                    
+                    -- Set this as THE pet to age
+                    CONFIG.PET_NAME = petName
+                    return true
+                else
+                    print("  ⚠️ You don't have any, trying next...")
+                end
+            else
+                print("  ❌ Not found in database, trying next...")
+            end
+        end
+        
+        -- None found
+        print("\n❌ ERROR: None of the pet types found in your inventory!")
+        print("\nPets searched:")
+        for i, name in ipairs(CONFIG.PET_NAMES) do
+            print(string.format("  %d. %s", i, name))
+        end
+        error("No pets available from the list!")
+        
+    elseif CONFIG.PET_NAME and CONFIG.PET_NAME ~= "" then
+        -- Single pet mode (old way)
+        print("🐾 Single-Pet Mode: " .. CONFIG.PET_NAME)
+        return true
+    else
+        error("❌ No PET_NAME or PET_NAMES configured!")
+    end
+end
+
+-- Run pet selection
+findAndSelectPet()
+
 if not CONFIG.PET_NAME or CONFIG.PET_NAME == "" then
-    error("❌ Set PET_NAME!")
+    error("❌ No pet selected!")
 end
 
 -- ============================================
@@ -195,6 +307,7 @@ task.wait(5)
 -- ============================================
 print("===========================================")
 print("  SMART AGING SYSTEM")
+print("  + Multi-pet support with fallback")
 print("  + Pet resolved by name")
 print("  + Kicks game when done")
 print("===========================================")
