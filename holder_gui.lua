@@ -59,31 +59,29 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = game:GetService("CoreGui")
 
--- Main Frame
+-- Main Frame (Responsive for all devices)
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 380, 0, 520)
-MainFrame.Position = UDim2.new(0.5, -190, 0.5, -260)
+MainFrame.Size = UDim2.new(0, 340, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -240)
 MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
 
+-- Auto-scale for smaller screens
+local function updateScale()
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    local scale = math.min(screenSize.X / 340, screenSize.Y / 480)
+    if scale < 1 then
+        MainFrame.Size = UDim2.new(0, 340 * scale * 0.95, 0, 480 * scale * 0.95)
+        MainFrame.Position = UDim2.new(0.5, -170 * scale * 0.95, 0.5, -240 * scale * 0.95)
+    end
+end
+updateScale()
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 16)
 MainCorner.Parent = MainFrame
-
--- Shadow effect
-local Shadow = Instance.new("ImageLabel")
-Shadow.Name = "Shadow"
-Shadow.Size = UDim2.new(1, 30, 1, 30)
-Shadow.Position = UDim2.new(0, -15, 0, -15)
-Shadow.BackgroundTransparency = 1
-Shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-Shadow.ImageTransparency = 0.7
-Shadow.ScaleType = Enum.ScaleType.Slice
-Shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-Shadow.ZIndex = 0
-Shadow.Parent = MainFrame
 
 -- Header
 local Header = Instance.new("Frame")
@@ -123,7 +121,7 @@ CloseButton.BackgroundColor3 = Color3.fromRGB(235, 64, 52)
 CloseButton.Text = "✕"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.TextSize = 18
-ClcloseButton.Font = Enum.Font.GothamBold
+CloseButton.Font = Enum.Font.GothamBold
 CloseButton.Parent = Header
 
 local CloseCorner = Instance.new("UICorner")
@@ -132,7 +130,7 @@ CloseCorner.Parent = CloseButton
 
 -- Content Area
 local ContentFrame = Instance.new("ScrollingFrame")
-ContentFrame.Size = UDim2.new(1, -32, 1, -76)
+ContentFrame.Size = UDim2.new(1, -32, 1, -110)
 ContentFrame.Position = UDim2.new(0, 16, 0, 68)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.BorderSizePixel = 0
@@ -164,22 +162,22 @@ local function createCard(name, height, order)
 end
 
 -- 1. Pet ID Input
-local PetCard = createCard("PetCard", 70, 1)
+local PetCard = createCard("PetCard", 65, 1)
 
 local PetLabel = Instance.new("TextLabel")
-PetLabel.Size = UDim2.new(1, -24, 0, 20)
-PetLabel.Position = UDim2.new(0, 12, 0, 10)
+PetLabel.Size = UDim2.new(1, -24, 0, 18)
+PetLabel.Position = UDim2.new(0, 12, 0, 8)
 PetLabel.BackgroundTransparency = 1
 PetLabel.Text = "🐾 Pet Remote ID"
 PetLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
-PetLabel.TextSize = 13
+PetLabel.TextSize = 12
 PetLabel.Font = Enum.Font.GothamMedium
 PetLabel.TextXAlignment = Enum.TextXAlignment.Left
 PetLabel.Parent = PetCard
 
 local PetKindBox = Instance.new("TextBox")
-PetKindBox.Size = UDim2.new(1, -24, 0, 36)
-PetKindBox.Position = UDim2.new(0, 12, 0, 30)
+PetKindBox.Size = UDim2.new(1, -24, 0, 34)
+PetKindBox.Position = UDim2.new(0, 12, 0, 26)
 PetKindBox.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 PetKindBox.PlaceholderText = "e.g., moon_2025_snorgle"
 PetKindBox.Text = ""
@@ -194,11 +192,11 @@ PetBoxCorner.CornerRadius = UDim.new(0, 8)
 PetBoxCorner.Parent = PetKindBox
 
 -- 2. Filters
-local FilterCard = createCard("FilterCard", 100, 2)
+local FilterCard = createCard("FilterCard", 85, 2)
 
 local FilterLabel = Instance.new("TextLabel")
-FilterLabel.Size = UDim2.new(1, -24, 0, 20)
-FilterLabel.Position = UDim2.new(0, 12, 0, 10)
+FilterLabel.Size = UDim2.new(1, -24, 0, 18)
+FilterLabel.Position = UDim2.new(0, 12, 0, 8)
 FilterLabel.BackgroundTransparency = 1
 FilterLabel.Text = "⚙️ Filters"
 FilterLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -209,8 +207,8 @@ FilterLabel.Parent = FilterCard
 
 -- Neon Toggle
 local NeonContainer = Instance.new("Frame")
-NeonContainer.Size = UDim2.new(1, -24, 0, 32)
-NeonContainer.Position = UDim2.new(0, 12, 0, 32)
+NeonContainer.Size = UDim2.new(1, -24, 0, 30)
+NeonContainer.Position = UDim2.new(0, 12, 0, 28)
 NeonContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 NeonContainer.BorderSizePixel = 0
 NeonContainer.Parent = FilterCard
@@ -255,7 +253,7 @@ CircleCorner.Parent = ToggleCircle
 -- Rarity Selector
 local RarityLabel = Instance.new("TextLabel")
 RarityLabel.Size = UDim2.new(1, -24, 0, 16)
-RarityLabel.Position = UDim2.new(0, 12, 0, 68)
+RarityLabel.Position = UDim2.new(0, 12, 0, 62)
 RarityLabel.BackgroundTransparency = 1
 RarityLabel.Text = "Rarity: All"
 RarityLabel.TextColor3 = Color3.fromRGB(140, 200, 255)
@@ -265,11 +263,11 @@ RarityLabel.TextXAlignment = Enum.TextXAlignment.Left
 RarityLabel.Parent = FilterCard
 
 -- 3. Status
-local StatusCard = createCard("StatusCard", 60, 3)
+local StatusCard = createCard("StatusCard", 50, 3)
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -24, 1, -20)
-StatusLabel.Position = UDim2.new(0, 12, 0, 10)
+StatusLabel.Size = UDim2.new(1, -24, 1, -16)
+StatusLabel.Position = UDim2.new(0, 12, 0, 8)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "⏳ Ready to start"
 StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
@@ -281,11 +279,11 @@ StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
 StatusLabel.Parent = StatusCard
 
 -- 4. Queue
-local QueueCard = createCard("QueueCard", 90, 4)
+local QueueCard = createCard("QueueCard", 80, 4)
 
 local QueueLabel = Instance.new("TextLabel")
-QueueLabel.Size = UDim2.new(1, -24, 0, 20)
-QueueLabel.Position = UDim2.new(0, 12, 0, 8)
+QueueLabel.Size = UDim2.new(1, -24, 0, 18)
+QueueLabel.Position = UDim2.new(0, 12, 0, 6)
 QueueLabel.BackgroundTransparency = 1
 QueueLabel.Text = "📋 Queue (0)"
 QueueLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -295,8 +293,8 @@ QueueLabel.TextXAlignment = Enum.TextXAlignment.Left
 QueueLabel.Parent = QueueCard
 
 local QueueScroll = Instance.new("ScrollingFrame")
-QueueScroll.Size = UDim2.new(1, -24, 1, -34)
-QueueScroll.Position = UDim2.new(0, 12, 0, 30)
+QueueScroll.Size = UDim2.new(1, -24, 1, -30)
+QueueScroll.Position = UDim2.new(0, 12, 0, 26)
 QueueScroll.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 QueueScroll.BorderSizePixel = 0
 QueueScroll.ScrollBarThickness = 2
@@ -313,11 +311,11 @@ QueueLayout.Padding = UDim.new(0, 2)
 QueueLayout.Parent = QueueScroll
 
 -- 5. Stats
-local StatsCard = createCard("StatsCard", 48, 5)
+local StatsCard = createCard("StatsCard", 42, 5)
 
 local StatsContainer = Instance.new("Frame")
-StatsContainer.Size = UDim2.new(1, -24, 1, -16)
-StatsContainer.Position = UDim2.new(0, 12, 0, 8)
+StatsContainer.Size = UDim2.new(1, -24, 1, -12)
+StatsContainer.Position = UDim2.new(0, 12, 0, 6)
 StatsContainer.BackgroundTransparency = 1
 StatsContainer.Parent = StatsCard
 
@@ -355,8 +353,8 @@ local TotalLabel = createStatBox("📊 0", Color3.fromRGB(140, 200, 255))
 
 -- 6. Start Button
 local StartButton = Instance.new("TextButton")
-StartButton.Size = UDim2.new(1, -32, 0, 46)
-StartButton.Position = UDim2.new(0, 16, 1, -58)
+StartButton.Size = UDim2.new(1, -32, 0, 42)
+StartButton.Position = UDim2.new(0, 16, 1, -52)
 StartButton.BackgroundColor3 = Color3.fromRGB(88, 180, 90)
 StartButton.Text = "▶️  START"
 StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
