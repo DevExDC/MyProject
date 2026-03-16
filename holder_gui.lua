@@ -589,37 +589,55 @@ local function get_pets(count)
     for _, pet in pairs(playerData.inventory.pets) do
         checked = checked + 1
         
+        local shouldInclude = true
+        
         -- Check pet kind
         if pet.kind ~= petKind then
-            continue
+            shouldInclude = false
         end
         
-        local is_neon = pet.properties and pet.properties.neon
-        local is_mega = pet.properties and pet.properties.mega
-        
-        -- Neon filter
-        if neonEnabled then
-            if not (is_neon or is_mega) then
-                continue
-            end
-        end
-        
-        -- Rarity filter (if not "All")
-        if selectedRarity ~= "All" then
-            local petRarity = pet.rarity or "common"
-            local filterRarity = selectedRarity:lower():gsub(" ", "_")
+        if shouldInclude then
+            local is_neon = pet.properties and pet.properties.neon
+            local is_mega = pet.properties and pet.properties.mega_neon
+            local pet_age = pet.properties and pet.properties.age or 0
             
-            -- Make both lowercase for comparison
-            if filterRarity ~= petRarity:lower() then
-                continue
+            -- ALWAYS skip age 6 pets (full grown) regardless of neon toggle
+            if pet_age >= 6 then
+                shouldInclude = false
+            end
+            
+            -- Neon filter: ONLY neons (not megas)
+            if shouldInclude and neonEnabled then
+                -- Skip if it's a mega neon
+                if is_mega then
+                    shouldInclude = false
+                end
+                
+                -- Skip if it's NOT a neon
+                if not is_neon then
+                    shouldInclude = false
+                end
+            end
+            
+            -- Rarity filter (if not "All")
+            if shouldInclude and selectedRarity ~= "All" then
+                local petRarity = pet.rarity or "common"
+                local filterRarity = selectedRarity:lower():gsub(" ", "_")
+                
+                -- Make both lowercase for comparison
+                if filterRarity ~= petRarity:lower() then
+                    shouldInclude = false
+                end
             end
         end
         
-        matched = matched + 1
-        table.insert(pets, pet.unique)
-        
-        if #pets >= count then
-            break
+        if shouldInclude then
+            matched = matched + 1
+            table.insert(pets, pet.unique)
+            
+            if #pets >= count then
+                break
+            end
         end
     end
     
