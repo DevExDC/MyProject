@@ -281,19 +281,43 @@ local function trade_to_user(username, amount)
         print("⏳ Waiting for countdown (6 seconds)...")
         task.wait(6)
         
-        print("✅ Accepting trade...")
-        accept_trade()
-        task.wait(0.5)
+        -- Spam accept/confirm until trade completes
+        print("✅ Accepting trade (spam mode)...")
+        local accept_spam = true
         
-        print("✅ Confirming trade...")
-        confirm_trade()
+        task.spawn(function()
+            while accept_spam do
+                pcall(function()
+                    accept_trade()
+                end)
+                task.wait(0.5)
+            end
+        end)
+        
+        task.wait(1)
+        
+        print("✅ Confirming trade (spam mode)...")
+        local confirm_spam = true
+        
+        task.spawn(function()
+            while confirm_spam do
+                pcall(function()
+                    confirm_trade()
+                end)
+                task.wait(0.5)
+            end
+        end)
         
         -- Wait for trade to complete
         timeout = 0
         repeat
             task.wait(0.5)
             timeout = timeout + 0.5
-        until not tradeGui.Visible or timeout > 20
+        until not tradeGui.Visible or timeout > 30
+        
+        -- Stop spamming
+        accept_spam = false
+        confirm_spam = false
         
         if timeout > 20 then
             print("⚠️ Trade timeout, retrying...")
