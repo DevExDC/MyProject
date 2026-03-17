@@ -9,12 +9,22 @@
 local CONFIG = getgenv().TradeConfig
 
 if not CONFIG then
-    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExample:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n    AUTO_KICK = true,\n}\n")
+    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExample:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n    FULL_GROWN_ONLY = false,\n    AUTO_KICK = true,\n    NORMAL_MODE = false,\n}\n")
 end
 
 -- Default AUTO_KICK to false if not set
 if CONFIG.AUTO_KICK == nil then
     CONFIG.AUTO_KICK = false
+end
+
+-- Default NORMAL_MODE to false if not set (fast mode by default)
+if CONFIG.NORMAL_MODE == nil then
+    CONFIG.NORMAL_MODE = false
+end
+
+-- Default FULL_GROWN_ONLY to false if not set
+if CONFIG.FULL_GROWN_ONLY == nil then
+    CONFIG.FULL_GROWN_ONLY = false
 end
 
 -- Auto-detect mode
@@ -120,6 +130,20 @@ print("Pet Name:     " .. CONFIG.PET_NAME)
 print("Pet Kind:     " .. CONFIG.PET_KIND)
 print("Neon Only:    " .. tostring(CONFIG.NEON_ONLY))
 print("Mega Only:    " .. tostring(CONFIG.MEGA_ONLY or false))
+print("Full Grown:   " .. tostring(CONFIG.FULL_GROWN_ONLY))
+print("Normal Mode:  " .. tostring(CONFIG.NORMAL_MODE))
+print("Auto Kick:    " .. tostring(CONFIG.AUTO_KICK))
+print("\nTrade Plan:")
+for i, username in ipairs(CONFIG.USERNAMES) do
+    print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
+end
+print("===========================================\n")==========================================")
+print("  EXACT AMOUNT PET TRADER")
+print("===========================================")
+print("Pet Name:     " .. CONFIG.PET_NAME)
+print("Pet Kind:     " .. CONFIG.PET_KIND)
+print("Neon Only:    " .. tostring(CONFIG.NEON_ONLY))
+print("Mega Only:    " .. tostring(CONFIG.MEGA_ONLY or false))
 print("Auto Kick:    " .. tostring(CONFIG.AUTO_KICK))
 print("\nTrade Plan:")
 for i, username in ipairs(CONFIG.USERNAMES) do
@@ -153,22 +177,30 @@ local function get_pets(count)
             if shouldInclude then
                 local is_neon = pet.properties and pet.properties.neon
                 local is_mega = pet.properties and pet.properties.mega_neon
+                local pet_age = pet.properties and pet.properties.age or 0
+                
+                -- Full grown filter (must be age 6)
+                if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
+                    shouldInclude = false
+                end
                 
                 -- Filter logic
-                if CONFIG.MEGA_ONLY then
-                    -- Only megas
-                    if not is_mega then
-                        shouldInclude = false
-                    end
-                elseif CONFIG.NEON_ONLY then
-                    -- Only neons (not megas)
-                    if is_mega or not is_neon then
-                        shouldInclude = false
-                    end
-                else
-                    -- Default: Only normals (skip neons and megas)
-                    if is_neon or is_mega then
-                        shouldInclude = false
+                if shouldInclude then
+                    if CONFIG.MEGA_ONLY then
+                        -- Only megas
+                        if not is_mega then
+                            shouldInclude = false
+                        end
+                    elseif CONFIG.NEON_ONLY then
+                        -- Only neons (not megas)
+                        if is_mega or not is_neon then
+                            shouldInclude = false
+                        end
+                    else
+                        -- Default: Only normals (skip neons and megas)
+                        if is_neon or is_mega then
+                            shouldInclude = false
+                        end
                     end
                 end
             end
@@ -278,51 +310,68 @@ local function trade_to_user(username, amount)
         
         -- Add pets to trade
         print(string.format("📦 Adding %d pets to trade...", #pets))
+        local add_delay = CONFIG.NORMAL_MODE and 0.5 or 0.2
         for i, petUnique in ipairs(pets) do
             add_pet(petUnique)
-            task.wait(0.2)
+            task.wait(add_delay)
         end
         
         -- Wait for countdown and accept
         print("⏳ Waiting for countdown (6 seconds)...")
         task.wait(6)
         
-        -- Spam accept/confirm until trade completes
-        print("✅ Accepting trade (spam mode)...")
-        local accept_spam = true
-        
-        task.spawn(function()
-            while accept_spam do
-                pcall(function()
-                    accept_trade()
-                end)
+        if CONFIG.NORMAL_MODE then
+            -- NORMAL MODE: Single accept/confirm with longer waits
+            print("✅ Accepting trade...")
+            accept_trade()
+            task.wait(20)  -- 20 second wait before confirming
+            
+            print("✅ Confirming trade...")
+            confirm_trade()
+            
+            -- Wait for trade to complete
+            print("⏳ Waiting for trade to complete...")
+            repeat
                 task.wait(0.5)
-            end
-        end)
-        
-        task.wait(1)
-        
-        print("✅ Confirming trade (spam mode)...")
-        local confirm_spam = true
-        
-        task.spawn(function()
-            while confirm_spam do
-                pcall(function()
-                    confirm_trade()
-                end)
+            until not tradeGui.Visible
+        else
+            -- FAST MODE (DEFAULT): Spam accept/confirm
+            print("✅ Accepting trade (spam mode)...")
+            local accept_spam = true
+            
+            task.spawn(function()
+                while accept_spam do
+                    pcall(function()
+                        accept_trade()
+                    end)
+                    task.wait(0.5)
+                end
+            end)
+            
+            task.wait(1)
+            
+            print("✅ Confirming trade (spam mode)...")
+            local confirm_spam = true
+            
+            task.spawn(function()
+                while confirm_spam do
+                    pcall(function()
+                        confirm_trade()
+                    end)
+                    task.wait(0.5)
+                end
+            end)
+            
+            -- Wait for trade to complete
+            print("⏳ Waiting for trade to complete...")
+            repeat
                 task.wait(0.5)
-            end
-        end)
-        
-        -- Wait for trade to complete (NO TIMEOUT - wait forever until done)
-        print("⏳ Waiting for trade to complete...")
-        repeat
-            task.wait(0.5)
-        until not tradeGui.Visible
-        
-        -- Stop spamming
-        accept_spam = false
-        confirm_spam = false
+            until not tradeGui.Visible
+            
+            -- Stop spamming
+            accept_spam = false
+            confirm_spam = false
+        end
         
         -- Update progress
         total_traded = total_traded + this_batch
