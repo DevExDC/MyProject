@@ -5,60 +5,10 @@
 -- Case-insensitive usernames and pet names
 -- ============================================
 
--- ⚙️ CONFIGURATION EXAMPLES:
-
--- MODE 1: Single pet to single user
--- getgenv().TradeConfig = {
---     USERNAME = "Player123",
---     PET_NAME = "Dog",
---     AMOUNT = 50,
---     NEON_ONLY = false,
---     MEGA_ONLY = false,
---     FULL_GROWN_ONLY = false,
---     AUTO_KICK = true,
---     NORMAL_MODE = false,
--- }
-
--- MODE 2: Single pet to multiple users
--- getgenv().TradeConfig = {
---     USERNAMES = {"User1", "User2", "User3"},
---     PET_NAME = "Dog",
---     AMOUNTS = {50, 30, 20},
---     NEON_ONLY = false,
---     MEGA_ONLY = false,
---     FULL_GROWN_ONLY = false,
---     AUTO_KICK = true,
---     NORMAL_MODE = false,
--- }
-
--- MODE 3: Multiple pets (mixed) to single user
--- getgenv().TradeConfig = {
---     USERNAME = "Player123",
---     PET_NAMES = {"Dog", "Cat", "Pomeranian"},  -- All mixed together!
---     NEON_ONLY = false,
---     MEGA_ONLY = false,
---     FULL_GROWN_ONLY = false,
---     AUTO_KICK = true,
---     NORMAL_MODE = false,
--- }
-
--- MODE 4: Multiple pets with different amounts/filters
-getgenv().TradeConfig = {
-    USERNAME = "Player123",
-    PETS = {
-        {PET_NAME = "Dog", AMOUNT = 50, NEON_ONLY = false},
-        {PET_NAME = "Cat"},  -- ALL cats
-        {PET_NAME = "Pomeranian", AMOUNT = 20, NEON_ONLY = true},
-    },
-    FULL_GROWN_ONLY = false,
-    AUTO_KICK = true,
-    NORMAL_MODE = false,
-}
-
 local CONFIG = getgenv().TradeConfig
 
 if not CONFIG then
-    error("❌ ERROR: No configuration found!")
+    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExamples:\n\n-- Single pet, single user:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n    FULL_GROWN_ONLY = false,\n    AUTO_KICK = true,\n    NORMAL_MODE = false,\n}\n\n-- Multiple pets mixed:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAMES = {\"Dog\", \"Cat\", \"Pomeranian\"},\n    FULL_GROWN_ONLY = false,\n    AUTO_KICK = true,\n    NORMAL_MODE = false,\n}\n")
 end
 
 -- ============================================
@@ -468,7 +418,7 @@ local function trade_single_pet_to_user(username, amount)
             
             -- Wait for trade to complete with timeout
             local trade_timeout = 0
-            local MAX_TRADE_TIME = 60  -- 60 seconds max
+            local MAX_TRADE_TIME = 60
             repeat
                 task.wait(0.5)
                 trade_timeout = trade_timeout + 0.5
@@ -499,7 +449,7 @@ local function trade_single_pet_to_user(username, amount)
             
             -- Wait for trade to complete with timeout
             local trade_timeout = 0
-            local MAX_TRADE_TIME = 60  -- 60 seconds max
+            local MAX_TRADE_TIME = 60
             repeat
                 task.wait(0.5)
                 trade_timeout = trade_timeout + 0.5
