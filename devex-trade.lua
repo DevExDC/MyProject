@@ -9,7 +9,12 @@
 local CONFIG = getgenv().TradeConfig
 
 if not CONFIG then
-    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExample:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n}\n")
+    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExample:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n    AUTO_KICK = true,\n}\n")
+end
+
+-- Default AUTO_KICK to false if not set
+if CONFIG.AUTO_KICK == nil then
+    CONFIG.AUTO_KICK = false
 end
 
 -- Auto-detect mode
@@ -115,6 +120,7 @@ print("Pet Name:     " .. CONFIG.PET_NAME)
 print("Pet Kind:     " .. CONFIG.PET_KIND)
 print("Neon Only:    " .. tostring(CONFIG.NEON_ONLY))
 print("Mega Only:    " .. tostring(CONFIG.MEGA_ONLY or false))
+print("Auto Kick:    " .. tostring(CONFIG.AUTO_KICK))
 print("\nTrade Plan:")
 for i, username in ipairs(CONFIG.USERNAMES) do
     print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
@@ -377,6 +383,15 @@ local function trade_all_users()
         print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
     end
     print(("="):rep(60))
+    
+    -- Auto-kick if enabled
+    if CONFIG.AUTO_KICK then
+        print("\n🔴 AUTO_KICK enabled - Kicking in 3 seconds...")
+        task.wait(3)
+        LocalPlayer:Kick("✅ Trading complete! All trades finished.")
+    else
+        print("\nℹ️ Auto-kick disabled. You can close the script manually.")
+    end
 end
 
 -- ============================================
