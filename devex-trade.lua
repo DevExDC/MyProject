@@ -308,22 +308,15 @@ local function trade_to_user(username, amount)
             end
         end)
         
-        -- Wait for trade to complete
-        timeout = 0
+        -- Wait for trade to complete (NO TIMEOUT - wait forever until done)
+        print("⏳ Waiting for trade to complete...")
         repeat
             task.wait(0.5)
-            timeout = timeout + 0.5
-        until not tradeGui.Visible or timeout > 30
+        until not tradeGui.Visible
         
         -- Stop spamming
         accept_spam = false
         confirm_spam = false
-        
-        if timeout > 20 then
-            print("⚠️ Trade timeout, retrying...")
-            task.wait(2)
-            continue
-        end
         
         -- Update progress
         total_traded = total_traded + this_batch
