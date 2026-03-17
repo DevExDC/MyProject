@@ -298,7 +298,7 @@ local function trade_to_user(username, amount)
         
         -- Add pets to trade
         print(string.format("📦 Adding %d pets to trade...", #pets))
-        local add_delay = CONFIG.NORMAL_MODE and 0.5 or 0.2
+        local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
         for i, petUnique in ipairs(pets) do
             add_pet(petUnique)
             task.wait(add_delay)
@@ -309,10 +309,12 @@ local function trade_to_user(username, amount)
         task.wait(6)
         
         if CONFIG.NORMAL_MODE then
-            -- NORMAL MODE: Single accept/confirm with longer waits
+            -- NORMAL MODE: Accept, wait 20s, then confirm
             print("✅ Accepting trade...")
             accept_trade()
-            task.wait(20)  -- 20 second wait before confirming
+            
+            print("⏳ Waiting 20 seconds before confirming...")
+            task.wait(20)  -- 20 second wait AFTER countdown
             
             print("✅ Confirming trade...")
             confirm_trade()
