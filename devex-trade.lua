@@ -3,37 +3,14 @@
 -- Trades exact number of specific pets to one user
 -- ============================================
 
--- ⚙️ CONFIGURATION - CHANGE THESE VALUES
-
--- MODE 1: Single User (Simple)
--- getgenv().TradeConfig = {
---     USERNAME = "Player123",
---     PET_NAME = "Dog",
---     AMOUNT = 50,
---     NEON_ONLY = false,
--- }
-
--- MODE 2: Multiple Users - Different Amounts
--- getgenv().TradeConfig = {
---     USERNAMES = {"test", "test2", "test3"},
---     PET_NAME = "Dog",
---     AMOUNTS = {30, 40, 20},  -- Different amount for each user
---     NEON_ONLY = false,
--- }
-
--- MODE 3: Multiple Users - Same Amount
-getgenv().TradeConfig = {
-    USERNAMES = {"user1", "user2", "user3", "user4", "user5"},
-    PET_NAME = "Cat",
-    AMOUNTS = {10},  -- Same amount for all users!
-    NEON_ONLY = false,
-}
-
--- NOTE: 
--- - If AMOUNTS has 1 value, it will be used for ALL users
--- - If AMOUNTS has multiple values, it must match USERNAMES length
+-- ⚙️ CONFIGURATION
+-- Set this BEFORE running the script using getgenv().TradeConfig
 
 local CONFIG = getgenv().TradeConfig
+
+if not CONFIG then
+    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExample:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n}\n")
+end
 
 -- Auto-detect mode
 local MULTI_USER_MODE = CONFIG.USERNAMES and #CONFIG.USERNAMES > 0
@@ -137,6 +114,7 @@ print("===========================================")
 print("Pet Name:     " .. CONFIG.PET_NAME)
 print("Pet Kind:     " .. CONFIG.PET_KIND)
 print("Neon Only:    " .. tostring(CONFIG.NEON_ONLY))
+print("Mega Only:    " .. tostring(CONFIG.MEGA_ONLY or false))
 print("\nTrade Plan:")
 for i, username in ipairs(CONFIG.USERNAMES) do
     print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
@@ -170,14 +148,19 @@ local function get_pets(count)
                 local is_neon = pet.properties and pet.properties.neon
                 local is_mega = pet.properties and pet.properties.mega_neon
                 
-                -- Neon filter
-                if CONFIG.NEON_ONLY then
-                    -- Only neons, skip megas and normals
+                -- Filter logic
+                if CONFIG.MEGA_ONLY then
+                    -- Only megas
+                    if not is_mega then
+                        shouldInclude = false
+                    end
+                elseif CONFIG.NEON_ONLY then
+                    -- Only neons (not megas)
                     if is_mega or not is_neon then
                         shouldInclude = false
                     end
                 else
-                    -- Only normals, skip neons and megas
+                    -- Default: Only normals (skip neons and megas)
                     if is_neon or is_mega then
                         shouldInclude = false
                     end
