@@ -137,18 +137,6 @@ print("\nTrade Plan:")
 for i, username in ipairs(CONFIG.USERNAMES) do
     print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
 end
-print("===========================================\n")==========================================")
-print("  EXACT AMOUNT PET TRADER")
-print("===========================================")
-print("Pet Name:     " .. CONFIG.PET_NAME)
-print("Pet Kind:     " .. CONFIG.PET_KIND)
-print("Neon Only:    " .. tostring(CONFIG.NEON_ONLY))
-print("Mega Only:    " .. tostring(CONFIG.MEGA_ONLY or false))
-print("Auto Kick:    " .. tostring(CONFIG.AUTO_KICK))
-print("\nTrade Plan:")
-for i, username in ipairs(CONFIG.USERNAMES) do
-    print(string.format("  %d. %s → %d pets", i, username, CONFIG.AMOUNTS[i]))
-end
 print("===========================================\n")
 
 -- ============================================
