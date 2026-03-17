@@ -499,10 +499,16 @@ local function get_pets(count)
                 
                 -- Neon filter
                 if shouldInclude and neonEnabled then
+                    -- When neon toggle is ON: only neons, skip megas
                     if is_mega then
                         shouldInclude = false
                     end
                     if not is_neon then
+                        shouldInclude = false
+                    end
+                elseif shouldInclude and not neonEnabled then
+                    -- When neon toggle is OFF: only normal pets, skip neons and megas
+                    if is_neon or is_mega then
                         shouldInclude = false
                     end
                 end
