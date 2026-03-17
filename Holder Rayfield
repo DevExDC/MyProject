@@ -1,0 +1,528 @@
+-- ============================================
+-- HOLDER GUI - RAYFIELD UI VERSION
+-- Works with ngrok tunnels for remote access
+-- ============================================
+
+-- CONFIGURATION - Paste your ngrok URL here
+local NGROK_URL = "https://spinelike-lenora-unmovingly.ngrok-free.dev"
+
+if NGROK_URL:sub(-1) == "/" then
+    NGROK_URL = NGROK_URL:sub(1, -2)
+end
+
+print("🌐 Using ngrok URL: " .. NGROK_URL)
+
+repeat task.wait() until game:IsLoaded()
+repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+task.wait(2)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local holderName = LocalPlayer.Name
+
+-- ============== ANTI-AFK ==============
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+print("✅ Anti-AFK enabled")
+
+-- Dehash
+for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
+    v.Name = i
+end
+
+local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+
+-- State
+local isRunning = false
+local processedRequests = {}
+local currentQueue = {}
+local stats = {completed = 0, failed = 0, total = 0}
+
+-- Config
+local petKind = ""
+local selectedRarity = "All"
+local neonEnabled = false
+
+-- ============================================
+-- LOAD RAYFIELD
+-- ============================================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "💰 DevEx Holder",
+   LoadingTitle = "Loading Holder System...",
+   LoadingSubtitle = "by DevEx",
+   ConfigurationSaving = {
+      Enabled = false,
+   },
+   Discord = {
+      Enabled = false,
+   },
+   KeySystem = false,
+})
+
+-- ============================================
+-- TABS
+-- ============================================
+
+local MainTab = Window:CreateTab("🏠 Main", nil)
+local StatsTab = Window:CreateTab("📊 Stats", nil)
+
+-- ============================================
+-- MAIN TAB
+-- ============================================
+
+local Section1 = MainTab:CreateSection("Configuration")
+
+local PetInput = MainTab:CreateInput({
+   Name = "Pet Remote ID",
+   PlaceholderText = "e.g., moon_2025_snorgle",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      petKind = Text
+      print("Pet Kind set to: " .. petKind)
+   end,
+})
+
+local NeonToggle = MainTab:CreateToggle({
+   Name = "Neon Only (skip megas & normals)",
+   CurrentValue = false,
+   Flag = "NeonToggle",
+   Callback = function(Value)
+      neonEnabled = Value
+      print("Neon Only: " .. tostring(neonEnabled))
+   end,
+})
+
+local RarityDropdown = MainTab:CreateDropdown({
+   Name = "Rarity Filter",
+   Options = {"All", "Common", "Uncommon", "Rare", "Ultra Rare", "Legendary"},
+   CurrentOption = {"All"},
+   MultipleOptions = false,
+   Flag = "RarityDropdown",
+   Callback = function(Option)
+      selectedRarity = Option[1]
+      print("Rarity set to: " .. selectedRarity)
+   end,
+})
+
+local Section2 = MainTab:CreateSection("Control")
+
+local StatusLabel = MainTab:CreateLabel("Status: ⏳ Ready to start")
+
+local StartButton = MainTab:CreateButton({
+   Name = "▶️ START MONITORING",
+   Callback = function()
+      if petKind == "" then
+         Rayfield:Notify({
+            Title = "Error",
+            Content = "Please enter Pet Remote ID!",
+            Duration = 3,
+            Image = 4483362458,
+         })
+         return
+      end
+      
+      isRunning = not isRunning
+      
+      if isRunning then
+         -- Test connection
+         if not testConnection() then
+            isRunning = false
+            Rayfield:Notify({
+               Title = "Connection Failed",
+               Content = "Cannot connect to server!",
+               Duration = 4,
+               Image = 4483362458,
+            })
+            return
+         end
+         
+         StartButton:Set("⏸️ STOP MONITORING")
+         Rayfield:Notify({
+            Title = "Started",
+            Content = "Monitoring for trade requests...",
+            Duration = 3,
+            Image = 4483362458,
+         })
+         task.spawn(mainLoop)
+      else
+         StartButton:Set("▶️ START MONITORING")
+         StatusLabel:Set("Status: ⏸️ Stopped")
+         Rayfield:Notify({
+            Title = "Stopped",
+            Content = "Monitoring stopped",
+            Duration = 3,
+            Image = 4483362458,
+         })
+      end
+   end,
+})
+
+local TestButton = MainTab:CreateButton({
+   Name = "🔍 Test Connection",
+   Callback = function()
+      if testConnection() then
+         Rayfield:Notify({
+            Title = "Success",
+            Content = "Connected to server!",
+            Duration = 3,
+            Image = 4483362458,
+         })
+      else
+         Rayfield:Notify({
+            Title = "Failed",
+            Content = "Cannot connect to server!",
+            Duration = 4,
+            Image = 4483362458,
+         })
+      end
+   end,
+})
+
+local Section3 = MainTab:CreateSection("Queue")
+
+local QueueLabel = MainTab:CreateLabel("Queue: 0 requests")
+
+local QueueParagraph = MainTab:CreateParagraph({Title = "Current Queue", Content = "No requests"})
+
+-- ============================================
+-- STATS TAB
+-- ============================================
+
+local StatsSection = StatsTab:CreateSection("Statistics")
+
+local CompletedLabel = StatsTab:CreateLabel("✅ Completed: 0")
+local FailedLabel = StatsTab:CreateLabel("❌ Failed: 0")
+local TotalLabel = StatsTab:CreateLabel("📊 Total: 0")
+
+local ResetButton = StatsTab:CreateButton({
+   Name = "Reset Stats",
+   Callback = function()
+      stats.completed = 0
+      stats.failed = 0
+      stats.total = 0
+      updateStats()
+      Rayfield:Notify({
+         Title = "Stats Reset",
+         Content = "All statistics cleared",
+         Duration = 2,
+         Image = 4483362458,
+      })
+   end,
+})
+
+local InfoSection = StatsTab:CreateSection("Server Info")
+
+local ServerLabel = StatsTab:CreateLabel("Server: " .. NGROK_URL)
+
+-- ============================================
+-- FUNCTIONS
+-- ============================================
+
+function updateQueue()
+   local count = #currentQueue
+   QueueLabel:Set("Queue: " .. count .. " requests")
+   
+   if count == 0 then
+      QueueParagraph:Set({Title = "Current Queue", Content = "No requests"})
+   else
+      local queueText = ""
+      for i, req in ipairs(currentQueue) do
+         queueText = queueText .. string.format("%d. %s (%d pets)\n", i, req.username, req.pets_needed)
+      end
+      QueueParagraph:Set({Title = "Current Queue", Content = queueText})
+   end
+end
+
+function updateStats()
+   CompletedLabel:Set("✅ Completed: " .. stats.completed)
+   FailedLabel:Set("❌ Failed: " .. stats.failed)
+   TotalLabel:Set("📊 Total: " .. stats.total)
+end
+
+function testConnection()
+   local success, result = pcall(function()
+      return request({
+         Url = NGROK_URL .. "/requests",
+         Method = "GET"
+      })
+   end)
+   
+   if success and result.StatusCode == 200 then
+      StatusLabel:Set("Status: ✅ Connected!")
+      return true
+   else
+      StatusLabel:Set("Status: ❌ Connection failed!")
+      return false
+   end
+end
+
+function get_pending_requests()
+   local requests = {}
+   pcall(function()
+      local response = request({
+         Url = NGROK_URL .. "/requests",
+         Method = "GET"
+      })
+      
+      if response.StatusCode == 200 then
+         requests = HttpService:JSONDecode(response.Body)
+      end
+   end)
+   return requests
+end
+
+function get_pets(count)
+   local pets = {}
+   
+   pcall(function()
+      local playerData = Data.get_data()[holderName]
+      if not playerData or not playerData.inventory or not playerData.inventory.pets then
+         return
+      end
+      
+      for _, pet in pairs(playerData.inventory.pets) do
+         local shouldInclude = true
+         
+         if pet.kind ~= petKind then
+            shouldInclude = false
+         end
+         
+         if shouldInclude then
+            local is_neon = pet.properties and pet.properties.neon
+            local is_mega = pet.properties and pet.properties.mega_neon
+            local pet_age = pet.properties and pet.properties.age or 0
+            
+            -- ALWAYS skip age 6
+            if pet_age >= 6 then
+               shouldInclude = false
+            end
+            
+            -- Neon filter
+            if shouldInclude and neonEnabled then
+               -- When toggle is ON: only neons, skip megas
+               if is_mega then
+                  shouldInclude = false
+               end
+               if not is_neon then
+                  shouldInclude = false
+               end
+            elseif shouldInclude and not neonEnabled then
+               -- When toggle is OFF: only normal pets, skip neons and megas
+               if is_neon or is_mega then
+                  shouldInclude = false
+               end
+            end
+            
+            -- Rarity filter
+            if shouldInclude and selectedRarity ~= "All" then
+               local petRarity = pet.rarity or "common"
+               local filterRarity = selectedRarity:lower():gsub(" ", "_")
+               if filterRarity ~= petRarity:lower() then
+                  shouldInclude = false
+               end
+            end
+         end
+         
+         if shouldInclude then
+            table.insert(pets, pet.unique)
+            if #pets >= count then
+               break
+            end
+         end
+      end
+   end)
+   
+   return pets
+end
+
+function send_trade(username)
+   local target = Players:FindFirstChild(username)
+   if not target then return false end
+   ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
+   return true
+end
+
+function add_pet(unique)
+   ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
+end
+
+function accept_trade()
+   ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
+end
+
+function confirm_trade()
+   ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
+end
+
+function mark_complete(username)
+   pcall(function()
+      request({
+         Url = NGROK_URL .. "/complete",
+         Method = "POST",
+         Headers = {["Content-Type"] = "application/json"},
+         Body = HttpService:JSONEncode({username = username})
+      })
+   end)
+end
+
+function trade_to_receiver(username, total_pets_needed)
+   StatusLabel:Set(string.format("Status: 🔄 Trading to %s (%d pets)...", username, total_pets_needed))
+   
+   local BATCH_SIZE = 18
+   local pets_traded = 0
+   local trade_number = 1
+   
+   while pets_traded < total_pets_needed do
+      local remaining = total_pets_needed - pets_traded
+      local this_batch = math.min(remaining, BATCH_SIZE)
+      
+      local target = Players:FindFirstChild(username)
+      if not target then
+         StatusLabel:Set("Status: ❌ " .. username .. " left!")
+         if pets_traded > 0 then mark_complete(username) end
+         return false
+      end
+      
+      local pets = get_pets(this_batch)
+      
+      if #pets < this_batch then
+         if #pets > 0 then
+            this_batch = #pets
+         else
+            StatusLabel:Set(string.format("Status: ❌ Out of pets! (%d/%d)", pets_traded, total_pets_needed))
+            if pets_traded > 0 then mark_complete(username) end
+            return false
+         end
+      end
+      
+      StatusLabel:Set(string.format("Status: 📤 Trade #%d to %s...", trade_number, username))
+      
+      if not send_trade(username) then
+         task.wait(2)
+         continue
+      end
+      
+      task.wait(2)
+      
+      local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+      local timeout = 0
+      while not tradeGui.Visible and timeout < 10 do
+         task.wait(0.5)
+         timeout = timeout + 0.5
+      end
+      
+      if timeout >= 10 then
+         task.wait(2)
+         continue
+      end
+      
+      for i, petUnique in ipairs(pets) do
+         add_pet(petUnique)
+         StatusLabel:Set(string.format("Status: 📦 Adding... (%d/%d)", i, #pets))
+         task.wait(0.2)
+      end
+      
+      StatusLabel:Set("Status: ⏳ Waiting for countdown...")
+      task.wait(6)
+      accept_trade()
+      task.wait(0.5)
+      confirm_trade()
+      
+      timeout = 0
+      repeat
+         task.wait(0.5)
+         timeout = timeout + 0.5
+      until not tradeGui.Visible or timeout > 20
+      
+      if timeout > 20 then
+         task.wait(2)
+         continue
+      end
+      
+      pets_traded = pets_traded + this_batch
+      trade_number = trade_number + 1
+      
+      StatusLabel:Set(string.format("Status: ✅ %d/%d pets traded", pets_traded, total_pets_needed))
+      
+      if pets_traded < total_pets_needed then
+         task.wait(2)
+      end
+   end
+   
+   mark_complete(username)
+   return pets_traded >= total_pets_needed
+end
+
+function mainLoop()
+   while isRunning do
+      StatusLabel:Set("Status: 📡 Checking for requests...")
+      
+      local requests = get_pending_requests()
+      currentQueue = {}
+      
+      for _, request in ipairs(requests) do
+         local username = request.username
+         local pets_needed = tonumber(request.pets_needed) or 0
+         
+         if not processedRequests[username] and pets_needed > 0 then
+            table.insert(currentQueue, request)
+         end
+      end
+      
+      updateQueue()
+      
+      if #currentQueue == 0 then
+         StatusLabel:Set("Status: ⏳ Waiting for requests...")
+         task.wait(10)
+      else
+         local request = currentQueue[1]
+         stats.total = stats.total + 1
+         
+         local success = trade_to_receiver(request.username, request.pets_needed)
+         
+         if success then
+            stats.completed = stats.completed + 1
+            processedRequests[request.username] = true
+            Rayfield:Notify({
+               Title = "Trade Completed",
+               Content = "Successfully traded to " .. request.username,
+               Duration = 3,
+               Image = 4483362458,
+            })
+         else
+            stats.failed = stats.failed + 1
+            processedRequests[request.username] = true
+            Rayfield:Notify({
+               Title = "Trade Failed",
+               Content = "Failed to trade to " .. request.username,
+               Duration = 3,
+               Image = 4483362458,
+            })
+         end
+         
+         updateStats()
+         task.wait(2)
+      end
+   end
+end
+
+-- ============================================
+-- INITIALIZE
+-- ============================================
+
+print("✅ Rayfield Holder GUI Loaded!")
+print("🌐 Server: " .. NGROK_URL)
+
+Rayfield:Notify({
+   Title = "Holder System Loaded",
+   Content = "Configure settings and click Start",
+   Duration = 4,
+   Image = 4483362458,
+})
