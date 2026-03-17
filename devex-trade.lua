@@ -190,7 +190,8 @@ if MULTI_USER_MODE and CONFIG.AMOUNTS then
         end
     end
     
-    if #CONFIG.USERNAMES ~= #CONFIG.AMOUNTS then
+    -- Only validate AMOUNTS length if NOT in mixed mode
+    if not MIXED_MODE and #CONFIG.USERNAMES ~= #CONFIG.AMOUNTS then
         error("❌ ERROR: USERNAMES and AMOUNTS must have the same number of entries!")
     end
 end
@@ -397,6 +398,8 @@ local function trade_single_pet_to_user(username, amount)
     local BATCH_SIZE = 18
     local total_traded = 0
     local trade_number = 1
+    local retry_count = 0
+    local MAX_RETRIES = 3
     
     while total_traded < amount do
         local remaining = amount - total_traded
@@ -431,9 +434,22 @@ local function trade_single_pet_to_user(username, amount)
         end
         
         if timeout >= 10 then
+            print("⚠️ Trade GUI didn't open")
+            retry_count = retry_count + 1
+            
+            if retry_count >= MAX_RETRIES then
+                print(string.format("❌ Failed after %d retries - player may have disconnected", MAX_RETRIES))
+                print(string.format("⚠️ Partial completion: %d/%d to %s", total_traded, amount, username))
+                return false
+            end
+            
+            print(string.format("🔄 Retry %d/%d...", retry_count, MAX_RETRIES))
             task.wait(2)
             continue
         end
+        
+        -- Reset retry count on successful GUI open
+        retry_count = 0
         
         -- Add pets
         local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
@@ -449,7 +465,25 @@ local function trade_single_pet_to_user(username, amount)
             accept_trade()
             task.wait(20)
             confirm_trade()
-            repeat task.wait(0.5) until not tradeGui.Visible
+            
+            -- Wait for trade to complete with timeout
+            local trade_timeout = 0
+            local MAX_TRADE_TIME = 60  -- 60 seconds max
+            repeat
+                task.wait(0.5)
+                trade_timeout = trade_timeout + 0.5
+                
+                -- Check if player still in server
+                if not findPlayer(username) then
+                    print("❌ Player disconnected during trade!")
+                    return false
+                end
+            until not tradeGui.Visible or trade_timeout >= MAX_TRADE_TIME
+            
+            if trade_timeout >= MAX_TRADE_TIME then
+                print("❌ Trade timeout - player may have disconnected")
+                return false
+            end
         else
             local accept_spam = true
             task.spawn(function()
@@ -463,10 +497,29 @@ local function trade_single_pet_to_user(username, amount)
                 while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
             end)
             
-            repeat task.wait(0.5) until not tradeGui.Visible
+            -- Wait for trade to complete with timeout
+            local trade_timeout = 0
+            local MAX_TRADE_TIME = 60  -- 60 seconds max
+            repeat
+                task.wait(0.5)
+                trade_timeout = trade_timeout + 0.5
+                
+                -- Check if player still in server
+                if not findPlayer(username) then
+                    print("❌ Player disconnected during trade!")
+                    accept_spam = false
+                    confirm_spam = false
+                    return false
+                end
+            until not tradeGui.Visible or trade_timeout >= MAX_TRADE_TIME
             
             accept_spam = false
             confirm_spam = false
+            
+            if trade_timeout >= MAX_TRADE_TIME then
+                print("❌ Trade timeout - player may have disconnected")
+                return false
+            end
         end
         
         total_traded = total_traded + #pets
@@ -503,6 +556,8 @@ local function trade_mixed_pets_to_user(username)
     local trade_number = 1
     local totalTraded = {}
     local petTypeStats = {}
+    local retry_count = 0
+    local MAX_RETRIES = 3
     
     -- Initialize stats
     for _, petConfig in ipairs(petsList) do
@@ -551,9 +606,25 @@ local function trade_mixed_pets_to_user(username)
         end
         
         if timeout >= 10 then
+            print("⚠️ Trade GUI didn't open")
+            retry_count = retry_count + 1
+            
+            if retry_count >= MAX_RETRIES then
+                print(string.format("❌ Failed after %d retries - player may have disconnected", MAX_RETRIES))
+                print("\n⚠️ Partial completion:")
+                for _, petConfig in ipairs(petsList) do
+                    print(string.format("   %s: %d traded", petConfig.PET_NAME, totalTraded[petConfig.PET_KIND]))
+                end
+                return false
+            end
+            
+            print(string.format("🔄 Retry %d/%d...", retry_count, MAX_RETRIES))
             task.wait(2)
             continue
         end
+        
+        -- Reset retry count on successful GUI open
+        retry_count = 0
         
         -- Add pets
         local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
@@ -569,7 +640,28 @@ local function trade_mixed_pets_to_user(username)
             accept_trade()
             task.wait(20)
             confirm_trade()
-            repeat task.wait(0.5) until not tradeGui.Visible
+            
+            -- Wait for trade to complete with timeout
+            local trade_timeout = 0
+            local MAX_TRADE_TIME = 60
+            repeat
+                task.wait(0.5)
+                trade_timeout = trade_timeout + 0.5
+                
+                if not findPlayer(username) then
+                    print("❌ Player disconnected during trade!")
+                    print("\n⚠️ Partial completion:")
+                    for _, petConfig in ipairs(petsList) do
+                        print(string.format("   %s: %d traded", petConfig.PET_NAME, totalTraded[petConfig.PET_KIND]))
+                    end
+                    return false
+                end
+            until not tradeGui.Visible or trade_timeout >= MAX_TRADE_TIME
+            
+            if trade_timeout >= MAX_TRADE_TIME then
+                print("❌ Trade timeout - player may have disconnected")
+                return false
+            end
         else
             local accept_spam = true
             task.spawn(function()
@@ -583,10 +675,32 @@ local function trade_mixed_pets_to_user(username)
                 while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
             end)
             
-            repeat task.wait(0.5) until not tradeGui.Visible
+            -- Wait for trade to complete with timeout
+            local trade_timeout = 0
+            local MAX_TRADE_TIME = 60
+            repeat
+                task.wait(0.5)
+                trade_timeout = trade_timeout + 0.5
+                
+                if not findPlayer(username) then
+                    print("❌ Player disconnected during trade!")
+                    accept_spam = false
+                    confirm_spam = false
+                    print("\n⚠️ Partial completion:")
+                    for _, petConfig in ipairs(petsList) do
+                        print(string.format("   %s: %d traded", petConfig.PET_NAME, totalTraded[petConfig.PET_KIND]))
+                    end
+                    return false
+                end
+            until not tradeGui.Visible or trade_timeout >= MAX_TRADE_TIME
             
             accept_spam = false
             confirm_spam = false
+            
+            if trade_timeout >= MAX_TRADE_TIME then
+                print("❌ Trade timeout - player may have disconnected")
+                return false
+            end
         end
         
         -- Update totals
