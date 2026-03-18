@@ -5,7 +5,7 @@
     HOW IT WORKS WITH THE PYTHON TOOL:
     - Python tool sets this config on the account and enables it
     - Script runs, finds holder, trades all items
-    - When done, script calls disableAccount() → tool detects disabled → marks done + moves to folder
+    - When done, script calls completeAccount() → tool detects disabled → marks done + moves to folder
     - Tool then pulls next account from queue automatically
     
     SETUP (via getgenv().Config BEFORE running):
@@ -13,7 +13,8 @@
         usernames = {"HolderName1", "HolderName2"},   -- holder account(s) in server
         pets_to_trade = {"Pet Kind Name"},             -- pet kinds to trade
         Webhook = "",                                  -- discord webhook (optional)
-        FARMSYNC_API_KEY = "your_api_key_here"        -- REQUIRED for auto-disable signal
+        FARMSYNC_API_KEY = "your_api_key_here",       -- REQUIRED
+        COMPLETION_FOLDER_ID = "your_folder_id_here"  -- folder to move account when done
     }
 ]]
 
@@ -38,7 +39,8 @@ getgenv().Config = getgenv().Config or {
     usernames            = {},
     pets_to_trade        = {},
     Webhook              = "",
-    FARMSYNC_API_KEY     = ""
+    FARMSYNC_API_KEY     = "",
+    COMPLETION_FOLDER_ID = ""
 }
 
 local config = getgenv().Config
@@ -58,6 +60,7 @@ print("===========================================")
 print("Pets    : " .. tostring(#config.pets_to_trade) .. " type(s)")
 print("Holders : " .. table.concat(config.usernames, ", "))
 print("API Key : " .. (config.FARMSYNC_API_KEY ~= "" and "Set" or "NOT SET"))
+print("Folder  : " .. (config.COMPLETION_FOLDER_ID ~= "" and config.COMPLETION_FOLDER_ID:sub(1,16) .. "..." or "NOT SET"))
 print("===========================================")
 
 -- ============== DEHASH ==============
@@ -88,26 +91,62 @@ local function sendWebhook(message)
     end)
 end
 
--- ============== DISABLE ACCOUNT (signals tool that trading is done) ==============
-local function disableAccount()
+-- ============== COMPLETE ACCOUNT (disable + mark done + move to folder) ==============
+local function completeAccount()
     if config.FARMSYNC_API_KEY == "" then
-        print("⚠️ No API key set — tool won't detect completion automatically")
+        print("No API key set — skipping auto-complete")
         return
     end
-    print("🔴 Signaling tool: trading complete (disabling account)...")
+
+    local apiKey  = config.FARMSYNC_API_KEY
+    local baseUrl = "https://api.farmsync.cloud/api"
+
+    -- Step 1: Disable account
+    print("Step 1: Disabling account...")
     pcall(function()
         request({
-            Url    = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
+            Url    = baseUrl .. "/self/accounts/" .. playerName,
             Method = "PUT",
             Headers = {
-                ["Authorization"] = "Bearer " .. config.FARMSYNC_API_KEY,
+                ["Authorization"] = "Bearer " .. apiKey,
                 ["Content-Type"]  = "application/json"
             },
             Body = HttpService:JSONEncode({enabled = false})
         })
-        print("✅ Disabled! Tool will now mark done and move to completion folder.")
+        print("  Account disabled!")
     end)
+
+    task.wait(2)
+
+    -- Step 2: Mark done + move to completion folder
+    if config.COMPLETION_FOLDER_ID ~= "" then
+        print("Step 2: Moving to completion folder...")
+        pcall(function()
+            local resp = request({
+                Url    = baseUrl .. "/self/accounts/mark-done",
+                Method = "POST",
+                Headers = {
+                    ["Authorization"] = "Bearer " .. apiKey,
+                    ["Content-Type"]  = "application/json"
+                },
+                Body = HttpService:JSONEncode({
+                    usernames        = {playerName},
+                    target_folder_id = config.COMPLETION_FOLDER_ID,
+                    source_folder_id = ""
+                })
+            })
+            print("  mark-done status: " .. tostring(resp.StatusCode))
+            print("  mark-done body  : " .. tostring(resp.Body))
+        end)
+    else
+        print("Step 2: No folder ID set — skipping move")
+    end
+
+    print("Done! Account completed.")
 end
+
+-- alias kept for any legacy calls
+local disableAccount = completeAccount
 
 -- ============== TRADE API HELPERS ==============
 local function send_trade(username)
@@ -349,7 +388,7 @@ if not holder then
     local tried = table.concat(config.usernames, ", ")
     warn("❌ No holders in server! Tried: " .. tried)
     sendWebhook("❌ " .. playerName .. " — No holders in server (" .. tried .. ")")
-    disableAccount()
+    completeAccount()
     return
 end
 
@@ -361,7 +400,7 @@ local total_items = #pets_unique_ids
 if total_items == 0 then
     warn("❌ No items to trade! Disabling...")
     sendWebhook("❌ " .. playerName .. " — Nothing to trade, disabling")
-    disableAccount()
+    completeAccount()
     return
 end
 
@@ -419,7 +458,7 @@ sendWebhook(string.format(
 -- Disable to signal the Python tool
 print("\n🔴 All done — signaling tool to mark complete...")
 task.wait(2)
-disableAccount()
+completeAccount()
 
 print("\n========================================")
 print("✅ SCRIPT COMPLETE — Tool will handle the rest")
