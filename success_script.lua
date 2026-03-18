@@ -1,35 +1,33 @@
 --[[
-    SUCCESS Auto-Trade Script - PETS + PET WEARS + GIFTS
-    v7.0.0 - Integrated with Harvest Auto-Trade Tool
-    
-    HOW IT WORKS WITH THE PYTHON TOOL:
-    - Python tool sets this config on the account and enables it
-    - Script runs, finds holder, trades all items
-    - When done, script calls completeAccount() → tool detects disabled → marks done + moves to folder
-    - Tool then pulls next account from queue automatically
-    
+    SUCCESS Auto-Trade Script v8.0
+    Integrated with Harvest Auto-Trade Tool
+
     SETUP (via getgenv().Config BEFORE running):
     getgenv().Config = {
-        usernames = {"HolderName1", "HolderName2"},   -- holder account(s) in server
-        pets_to_trade = {"Pet Kind Name"},             -- pet kinds to trade
-        Webhook = "",                                  -- discord webhook (optional)
-        FARMSYNC_API_KEY = "your_api_key_here",       -- REQUIRED
-        COMPLETION_FOLDER_ID = "your_folder_id_here"  -- folder to move account when done
+        usernames            = {"HolderName1", "HolderName2"},
+        pets_to_trade        = {"Gumball Caterpillar", "Dog"},  -- use display name OR kind
+        NEON_ONLY            = false,   -- only trade neons
+        MEGA_ONLY            = false,   -- only trade megas
+        FULL_GROWN_ONLY      = false,   -- only trade age 6
+        Webhook              = "",
+        FARMSYNC_API_KEY     = "your_api_key_here",
+        COMPLETION_FOLDER_ID = "your_folder_id_here"
     }
 ]]
 
 repeat task.wait() until game:IsLoaded()
+repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+task.wait(2)
 
-local Players          = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService      = game:GetService("HttpService")
-local LocalPlayer      = Players.LocalPlayer
-local playerName       = LocalPlayer.Name
+local HttpService       = game:GetService("HttpService")
+local LocalPlayer       = Players.LocalPlayer
+local playerName        = LocalPlayer.Name
 
 -- ============== ANTI-AFK ==============
 local VirtualUser = game:GetService("VirtualUser")
 LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
@@ -38,96 +36,212 @@ end)
 getgenv().Config = getgenv().Config or {
     usernames            = {},
     pets_to_trade        = {},
+    NEON_ONLY            = false,
+    MEGA_ONLY            = false,
+    FULL_GROWN_ONLY      = false,
     Webhook              = "",
     FARMSYNC_API_KEY     = "",
     COMPLETION_FOLDER_ID = ""
 }
-
 local config = getgenv().Config
 
 -- ============== DATA ==============
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
--- ============== STATE ==============
-local pets_unique_ids      = {}
-local trade_status         = false
-local adding_items         = false  -- blocks auto-accept while adding items
+-- ============== DEHASH ==============
+pcall(function()
+    for i, v in pairs(debug.getupvalue(
+        require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7
+    )) do
+        v.Name = i
+    end
+end)
+print("Dehashed remotes")
 
 -- ============== PRINT HEADER ==============
 print("===========================================")
-print("  SUCCESS Auto-Trade v7.0 (Tool Integrated)")
+print("  SUCCESS Auto-Trade v8.0")
 print("  Player: " .. playerName)
 print("===========================================")
-print("Pets    : " .. tostring(#config.pets_to_trade) .. " type(s)")
+print("Pets    : " .. #config.pets_to_trade .. " type(s)")
 print("Holders : " .. table.concat(config.usernames, ", "))
+print("Neon    : " .. tostring(config.NEON_ONLY))
+print("Mega    : " .. tostring(config.MEGA_ONLY))
+print("FG Only : " .. tostring(config.FULL_GROWN_ONLY))
 print("API Key : " .. (config.FARMSYNC_API_KEY ~= "" and "Set" or "NOT SET"))
-print("Folder  : " .. (config.COMPLETION_FOLDER_ID ~= "" and config.COMPLETION_FOLDER_ID:sub(1,16) .. "..." or "NOT SET"))
+print("Folder  : " .. (config.COMPLETION_FOLDER_ID ~= "" and config.COMPLETION_FOLDER_ID:sub(1,16).."..." or "NOT SET"))
 print("===========================================")
 
--- ============== DEHASH ==============
-local function dehash()
-    local function rename(remotename, hashedremote)
-        hashedremote.Name = remotename
+-- ============== RESOLVE ITEM (name or kind → kind) ==============
+local function resolveItem(input)
+    local db = require(ReplicatedStorage
+        :WaitForChild("ClientDB")
+        :WaitForChild("Inventory")
+        :WaitForChild("KindDB"))
+    local search = input:lower()
+    local nameMatch = nil
+
+    for _, v in pairs(db) do
+        if v.kind and v.kind:lower() == search then
+            return v.kind, v
+        end
+        if not nameMatch and v.name and v.name:lower() == search then
+            nameMatch = v
+        end
     end
-    pcall(function()
-        table.foreach(
-            getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7),
-            rename
-        )
-    end)
-    print("✅ Dehashed remotes")
+
+    if nameMatch then
+        return nameMatch.kind, nameMatch
+    end
+
+    return nil, nil
 end
-dehash()
+
+-- ============== RESOLVE ALL PET NAMES UPFRONT ==============
+print("\nResolving pet names...")
+local resolvedKinds = {}
+for _, petName in ipairs(config.pets_to_trade) do
+    local kind, data = resolveItem(petName)
+    if kind then
+        table.insert(resolvedKinds, kind)
+        print("  " .. petName .. " -> " .. kind)
+    else
+        warn("  Could not resolve: " .. petName)
+    end
+end
+
+if #resolvedKinds == 0 then
+    warn("No pets resolved! Check your pets_to_trade names.")
+end
+
+-- ============== GET PET UNIQUE IDs ==============
+local function getPetUniqueIds()
+    local ids = {}
+    local counts = {}
+
+    pcall(function()
+        local pd = Data.get_data()[playerName]
+        if not pd or not pd.inventory or not pd.inventory.pets then
+            warn("No inventory/pets found!")
+            return
+        end
+
+        for _, pet in pairs(pd.inventory.pets) do
+            for _, kind in ipairs(resolvedKinds) do
+                if pet.kind == kind then
+                    local props   = pet.properties or {}
+                    local is_neon = props.neon or false
+                    local is_mega = props.mega_neon or false
+                    local age     = props.age or 0
+
+                    local ok = true
+
+                    if config.FULL_GROWN_ONLY and age ~= 6 then ok = false end
+
+                    if ok then
+                        if config.MEGA_ONLY then
+                            if not is_mega then ok = false end
+                        elseif config.NEON_ONLY then
+                            if is_mega or not is_neon then ok = false end
+                        else
+                            if is_neon or is_mega then ok = false end
+                        end
+                    end
+
+                    if ok then
+                        table.insert(ids, pet.unique)
+                        counts[kind] = (counts[kind] or 0) + 1
+                    end
+                    break
+                end
+            end
+        end
+    end)
+
+    print(string.format("Pets found: %d", #ids))
+    for k, v in pairs(counts) do
+        print("  " .. k .. ": " .. v)
+    end
+
+    return ids
+end
+
+-- ============== TRADE API ==============
+local function findPlayer(username)
+    local search = username:lower()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Name:lower() == search then return p end
+    end
+    return nil
+end
+
+local function sendTrade(username)
+    local target = findPlayer(username)
+    if not target then return false end
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
+    return true
+end
+
+local function addItemToTrade(unique)
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
+end
+
+local function acceptTrade()
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
+end
+
+local function confirmTrade()
+    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
+end
 
 -- ============== WEBHOOK ==============
-local function sendWebhook(message)
+local function sendWebhook(msg)
     if config.Webhook == "" then return end
     pcall(function()
         request({
             Url     = config.Webhook,
             Method  = "POST",
             Headers = {["Content-Type"] = "application/json"},
-            Body    = HttpService:JSONEncode({["content"] = message})
+            Body    = HttpService:JSONEncode({content = msg})
         })
     end)
 end
 
--- ============== COMPLETE ACCOUNT (disable + mark done + move to folder) ==============
+-- ============== COMPLETE ACCOUNT (disable + mark done + move folder) ==============
 local function completeAccount()
     if config.FARMSYNC_API_KEY == "" then
-        print("No API key set — skipping auto-complete")
+        print("No API key — skipping auto-complete")
         return
     end
 
-    local apiKey  = config.FARMSYNC_API_KEY
-    local baseUrl = "https://api.farmsync.cloud/api"
+    local api = config.FARMSYNC_API_KEY
+    local base = "https://api.farmsync.cloud/api"
 
-    -- Step 1: Disable account
-    print("Step 1: Disabling account...")
+    -- Disable
+    print("Disabling account...")
     pcall(function()
         request({
-            Url    = baseUrl .. "/self/accounts/" .. playerName,
-            Method = "PUT",
+            Url     = base .. "/self/accounts/" .. playerName,
+            Method  = "PUT",
             Headers = {
-                ["Authorization"] = "Bearer " .. apiKey,
+                ["Authorization"] = "Bearer " .. api,
                 ["Content-Type"]  = "application/json"
             },
             Body = HttpService:JSONEncode({enabled = false})
         })
-        print("  Account disabled!")
     end)
 
     task.wait(2)
 
-    -- Step 2: Mark done + move to completion folder
+    -- Mark done + move to folder
     if config.COMPLETION_FOLDER_ID ~= "" then
-        print("Step 2: Moving to completion folder...")
+        print("Moving to completion folder...")
         pcall(function()
             local resp = request({
-                Url    = baseUrl .. "/self/accounts/mark-done",
-                Method = "POST",
+                Url     = base .. "/self/accounts/mark-done",
+                Method  = "POST",
                 Headers = {
-                    ["Authorization"] = "Bearer " .. apiKey,
+                    ["Authorization"] = "Bearer " .. api,
                     ["Content-Type"]  = "application/json"
                 },
                 Body = HttpService:JSONEncode({
@@ -136,345 +250,159 @@ local function completeAccount()
                     source_folder_id = ""
                 })
             })
-            print("  mark-done status: " .. tostring(resp.StatusCode))
-            print("  mark-done body  : " .. tostring(resp.Body))
+            print("mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
         end)
-    else
-        print("Step 2: No folder ID set — skipping move")
     end
 
-    print("Done! Account completed.")
-end
-
--- alias kept for any legacy calls
-local disableAccount = completeAccount
-
--- ============== TRADE API HELPERS ==============
-local function send_trade(username)
-    local target = Players:FindFirstChild(username)
-    if not target then
-        warn("Player " .. username .. " not found!")
-        return false
-    end
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
-    return true
-end
-
-local function add_item_to_trade(unique_id)
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique_id)
-end
-
-local function first_trade_accept()
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
-end
-
-local function confirm_trade()
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
-end
-
--- ============== AUTO-ACCEPT SYSTEMS ==============
-local function setup_auto_accept()
-    task.spawn(function()
-        local dialogApp = LocalPlayer.PlayerGui:FindFirstChild("DialogApp")
-        while task.wait(0.3) do
-            pcall(function()
-                if dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible then
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player.Name ~= playerName then
-                            ReplicatedStorage:WaitForChild("API")
-                                :WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest")
-                                :InvokeServer(player, true)
-                        end
-                    end
-                end
-            end)
-        end
-    end)
-end
-
-local function setup_auto_negotiate()
-    task.spawn(function()
-        while task.wait(0.5) do
-            pcall(function()
-                if adding_items then return end  -- dont accept while adding items
-                local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
-                if tradeGui and tradeGui.Frame.Visible then
-                    first_trade_accept()
-                end
-            end)
-        end
-    end)
-end
-
-local function setup_auto_confirm()
-    task.spawn(function()
-        while task.wait(0.5) do
-            pcall(function()
-                if adding_items then return end  -- dont confirm while adding items
-                local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
-                if tradeGui and tradeGui.Frame.Visible then
-                    confirm_trade()
-                end
-            end)
-        end
-    end)
-end
-
--- ============== INVENTORY READERS ==============
-
-local function get_all_pets()
-    local all_pets  = {}
-    local counts    = {}
-    local total_inv = 0
-    for _, kind in ipairs(config.pets_to_trade) do counts[kind] = 0 end
-    pcall(function()
-        local pd = Data.get_data()[playerName]
-        if not pd or not pd.inventory or not pd.inventory.pets then return end
-        for _, pet in pairs(pd.inventory.pets) do
-            total_inv = total_inv + 1
-            for _, kind in ipairs(config.pets_to_trade) do
-                if pet.kind == kind then
-                    table.insert(all_pets, pet.unique)
-                    counts[kind] = counts[kind] + 1
-                    break
-                end
-            end
-        end
-    end)
-    print(string.format("🐾 Pets  — Inventory: %d | Matching: %d", total_inv, #all_pets))
-    for kind, cnt in pairs(counts) do
-        if cnt > 0 then print("   • " .. kind .. ": " .. cnt) end
-    end
-    return all_pets, total_inv
-end
-
--- Count helpers (post-trade verification)
-local function count_pets()
-    local c = 0
-    pcall(function()
-        local pd = Data.get_data()[playerName]
-        if not pd or not pd.inventory or not pd.inventory.pets then return end
-        for _, pet in pairs(pd.inventory.pets) do
-            for _, kind in ipairs(config.pets_to_trade) do
-                if pet.kind == kind then c = c + 1; break end
-            end
-        end
-    end)
-    return c
-end
-
--- ============== SINGLE TRADE ATTEMPT ==============
-local function autotrade(username)
-    if trade_status then return false end
-    if #pets_unique_ids == 0 then
-        return true  -- nothing left, we're done
-    end
-
-    local success_flag = false
-
-    pcall(function()
-        trade_status = true
-
-        local holder = Players:FindFirstChild(username)
-        if not holder then
-            warn("❌ " .. username .. " is not in the server!")
-            trade_status = false
-            return
-        end
-
-        local pets_before = count_pets()
-        print(string.format("📦 Before — Pets: %d", pets_before))
-
-        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-
-        if not send_trade(username) then
-            print("❌ Failed to send trade request")
-            trade_status = false
-            return
-        end
-
-        print("📤 Trade request sent to " .. username)
-        task.wait(3)
-
-        -- Wait for trade window
-        local timeout = 0
-        while not tradeGui.Visible and timeout < 20 do
-            if not Players:FindFirstChild(username) then
-                warn("❌ " .. username .. " left while waiting!")
-                trade_status = false
-                return
-            end
-            task.wait(0.5)
-            timeout = timeout + 0.5
-        end
-
-        if timeout >= 20 then
-            warn("⚠️ Trade window didn't open after 20s")
-            trade_status = false
-            return
-        end
-
-        task.wait(1)
-
-        -- Lock auto-systems while adding items
-        adding_items = true
-        print("Adding items (auto-accept paused)...")
-
-        -- Add pets (max 18)
-        local added = 0
-        for _, uid in ipairs(pets_unique_ids) do
-            if added >= 18 then break end
-            add_item_to_trade(uid)
-            added = added + 1
-            task.wait(0.5)  -- slightly longer per item to ensure server registers
-        end
-
-        print(string.format("Added %d item(s) — waiting for trade to update...", added))
-        task.wait(3)  -- extra wait after all items added
-
-        -- Unlock auto-systems
-        adding_items = false
-
-        -- Manually accept
-        print("Accepting trade...")
-        first_trade_accept()
-        task.wait(2)
-
-        -- Wait for countdown then confirm
-        print("Waiting for countdown...")
-        task.wait(6)
-        print("Confirming...")
-        confirm_trade()
-
-        -- Wait for trade to close
-        timeout = 0
-        while tradeGui.Visible and timeout < 30 do
-            task.wait(0.5); timeout = timeout + 0.5
-        end
-        task.wait(2)
-
-        -- Verify
-        local pets_after  = count_pets()
-        local pets_traded = pets_before - pets_after
-
-        print(string.format("✅ Traded — Pets: %d", pets_traded))
-
-        if pets_traded > 0 then
-            for i = 1, pets_traded do table.remove(pets_unique_ids, 1) end
-            print(string.format("📋 Remaining — Pets: %d", #pets_unique_ids))
-            success_flag = true
-        else
-            warn("⚠️ No items traded — refreshing list...")
-            pets_unique_ids, _ = get_all_pets()
-        end
-
-        trade_status = false
-    end)
-
-    return success_flag
+    print("Account complete!")
 end
 
 -- ============== FIND HOLDER ==============
-local function find_holder()
+local function findHolder()
     for _, name in ipairs(config.usernames) do
-        if Players:FindFirstChild(name) then
-            print("✅ Holder found: " .. name)
+        if findPlayer(name) then
+            print("Holder found: " .. name)
             return name
         else
-            print("⚠️  " .. name .. " not in game")
+            print(name .. " not in game")
         end
     end
     return nil
 end
 
+-- ============== SINGLE TRADE ==============
+local function doTrade(holder, petIds)
+    local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+
+    -- Send trade request, retry until GUI opens
+    local timeout = 0
+    sendTrade(holder)
+    print("Trade request sent to " .. holder)
+
+    while not tradeGui.Visible do
+        task.wait(0.5)
+        timeout = timeout + 0.5
+        if timeout >= 10 then
+            print("Retrying trade request...")
+            sendTrade(holder)
+            timeout = 0
+        end
+        if not findPlayer(holder) then
+            warn(holder .. " left the game!")
+            return false
+        end
+    end
+
+    print("Trade window opened!")
+    task.wait(1)
+
+    -- Add up to 18 items
+    local added = 0
+    for _, uid in ipairs(petIds) do
+        if added >= 18 then break end
+        addItemToTrade(uid)
+        added = added + 1
+        task.wait(0.3)
+    end
+    print(string.format("Added %d items", added))
+
+    task.wait(2)
+
+    -- Spam accept + confirm until trade closes
+    local running = true
+    task.spawn(function()
+        while running do
+            pcall(acceptTrade)
+            task.wait(0.5)
+        end
+    end)
+    task.wait(1)
+    task.spawn(function()
+        while running do
+            pcall(confirmTrade)
+            task.wait(0.5)
+        end
+    end)
+
+    -- Wait for trade to close
+    local wait_timeout = 0
+    while tradeGui.Visible and wait_timeout < 30 do
+        task.wait(0.5)
+        wait_timeout = wait_timeout + 0.5
+    end
+
+    running = false
+    task.wait(1)
+
+    return true
+end
+
 -- ============== MAIN ==============
-
--- Start auto-systems
-setup_auto_accept()
-setup_auto_negotiate()
-setup_auto_confirm()
-print("✅ Auto-accept/confirm systems running\n")
-
--- Find holder
-print("🔍 Looking for holder...")
-local holder = find_holder()
+print("\nLooking for holder...")
+local holder = findHolder()
 
 if not holder then
-    local tried = table.concat(config.usernames, ", ")
-    warn("❌ No holders in server! Tried: " .. tried)
-    sendWebhook("❌ " .. playerName .. " — No holders in server (" .. tried .. ")")
+    warn("No holders in server!")
+    sendWebhook("❌ " .. playerName .. " — No holders in server")
     completeAccount()
     return
 end
 
--- Get all items
-pets_unique_ids, _ = get_all_pets()
+-- Get all pet IDs
+local allIds = getPetUniqueIds()
 
-local total_items = #pets_unique_ids
-
-if total_items == 0 then
-    warn("❌ No items to trade! Disabling...")
-    sendWebhook("❌ " .. playerName .. " — Nothing to trade, disabling")
+if #allIds == 0 then
+    warn("No pets to trade!")
+    sendWebhook("❌ " .. playerName .. " — No pets to trade")
     completeAccount()
     return
 end
 
-print(string.format("\n✅ Total pets to trade: %d", total_items))
+print(string.format("\nStarting trades — %d pets to %s", #allIds, holder))
+local initCount = #allIds
+local totalTraded = 0
 
-local init_pets = #pets_unique_ids
-
--- Trade loop
-local attempts     = 0
-local max_attempts = math.ceil(total_items / 18) + 10
-local consec_fails = 0
-local max_fails    = 3
-
-while #pets_unique_ids > 0 and attempts < max_attempts do
-
-    attempts = attempts + 1
-    print("\n=== Trade Attempt " .. attempts .. " ===")
-
-    if not Players:FindFirstChild(holder) then
-        warn("❌ " .. holder .. " left the game!")
-        sendWebhook("❌ " .. playerName .. " — Holder left mid-session")
+while #allIds > 0 do
+    if not findPlayer(holder) then
+        warn(holder .. " left!")
+        sendWebhook("❌ " .. playerName .. " — Holder left")
         break
     end
 
-    local ok = autotrade(holder)
+    -- Take next batch of 18
+    local batch = {}
+    for i = 1, math.min(18, #allIds) do
+        table.insert(batch, allIds[i])
+    end
 
-    if not ok then
-        consec_fails = consec_fails + 1
-        if consec_fails >= max_fails then
-            warn("⚠️ " .. max_fails .. " consecutive failures — waiting 10s...")
-            task.wait(10)
-            consec_fails = 0
-        else
-            task.wait(5)
-        end
+    local countBefore = #allIds
+    local ok = doTrade(holder, batch)
+
+    if ok then
+        -- Refresh list and check how many were actually traded
+        task.wait(1)
+        local newIds = getPetUniqueIds()
+        local traded = countBefore - #newIds
+        totalTraded = totalTraded + traded
+        allIds = newIds
+        print(string.format("Traded %d | Total: %d/%d | Remaining: %d",
+            traded, totalTraded, initCount, #allIds))
+        task.wait(2)
     else
-        consec_fails = 0
-        task.wait(3)
+        task.wait(5)
     end
 end
 
 -- Summary
-local pets_done = init_pets - #pets_unique_ids
+print("\n==========================================")
+print("  Trading Complete!")
+print(string.format("  Traded: %d / %d pets to %s", totalTraded, initCount, holder))
+print("==========================================")
 
-print("\n+----------------------------------------+")
-print("|  Trading Session Complete!             |")
-print("|  Holder : " .. holder)
-print(string.format("|  Pets   : %d / %d traded", pets_done, init_pets))
-print("+----------------------------------------+")
+sendWebhook(string.format("✅ %s — Done! Traded %d/%d pets to %s",
+    playerName, totalTraded, initCount, holder))
 
-sendWebhook(string.format(
-    "✅ **%s** — Trading done\nPets: %d / %d → **%s**",
-    playerName, pets_done, init_pets, holder))
-
--- Disable to signal the Python tool
-print("\n🔴 All done — signaling tool to mark complete...")
 task.wait(2)
 completeAccount()
 
-print("\n========================================")
-print("✅ SCRIPT COMPLETE — Tool will handle the rest")
-print("========================================")
+print("\nSCRIPT COMPLETE")
