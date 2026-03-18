@@ -209,35 +209,19 @@ local function sendWebhook(msg)
     end)
 end
 
--- ============== COMPLETE ACCOUNT (disable + mark done + move folder) ==============
+-- ============== COMPLETE ACCOUNT (move to folder first, then disable) ==============
 local function completeAccount()
     if config.FARMSYNC_API_KEY == "" then
         print("No API key — skipping auto-complete")
         return
     end
 
-    local api = config.FARMSYNC_API_KEY
+    local api  = config.FARMSYNC_API_KEY
     local base = "https://api.farmsync.cloud/api"
 
-    -- Disable
-    print("Disabling account...")
-    pcall(function()
-        request({
-            Url     = base .. "/self/accounts/" .. playerName,
-            Method  = "PUT",
-            Headers = {
-                ["Authorization"] = "Bearer " .. api,
-                ["Content-Type"]  = "application/json"
-            },
-            Body = HttpService:JSONEncode({enabled = false})
-        })
-    end)
-
-    task.wait(2)
-
-    -- Mark done + move to folder
+    -- Step 1: Move to completion folder FIRST (while still enabled)
     if config.COMPLETION_FOLDER_ID ~= "" then
-        print("Moving to completion folder...")
+        print("Step 1: Moving to completion folder...")
         pcall(function()
             local resp = request({
                 Url     = base .. "/self/accounts/mark-done",
@@ -252,9 +236,25 @@ local function completeAccount()
                     source_folder_id = ""
                 })
             })
-            print("mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
+            print("  mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
         end)
+        task.wait(2)
     end
+
+    -- Step 2: Disable AFTER folder move is done
+    print("Step 2: Disabling account (signals tool to pull next)...")
+    pcall(function()
+        local resp = request({
+            Url     = base .. "/self/accounts/" .. playerName,
+            Method  = "PUT",
+            Headers = {
+                ["Authorization"] = "Bearer " .. api,
+                ["Content-Type"]  = "application/json"
+            },
+            Body = HttpService:JSONEncode({enabled = false})
+        })
+        print("  disabled: " .. tostring(resp.StatusCode))
+    end)
 
     print("Account complete!")
 end
