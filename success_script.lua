@@ -258,16 +258,18 @@ local function completeAccount()
 end
 
 -- ============== FIND HOLDER ==============
-local function findHolder()
-    for _, name in ipairs(config.usernames) do
-        if findPlayer(name) then
-            print("Holder found: " .. name)
-            return name
-        else
-            print(name .. " not in game")
+-- Waits until at least one holder joins the server
+local function waitForHolder()
+    while true do
+        for _, name in ipairs(config.usernames) do
+            if findPlayer(name) then
+                print("Holder found: " .. name)
+                return name
+            end
         end
+        print("Waiting for holder... (" .. table.concat(config.usernames, ", ") .. ")")
+        task.wait(5)
     end
-    return nil
 end
 
 -- ============== SINGLE TRADE ==============
@@ -282,14 +284,24 @@ local function doTrade(holder, petIds)
     while not tradeGui.Visible do
         task.wait(0.5)
         timeout = timeout + 0.5
-        if timeout >= 10 then
-            print("Retrying trade request...")
+
+        if not findPlayer(holder) then
+            warn(holder .. " disconnected — waiting for them to rejoin...")
+            sendWebhook("⚠️ " .. playerName .. " — Holder " .. holder .. " disconnected, waiting...")
+            -- Wait until holder rejoins
+            while not findPlayer(holder) do
+                task.wait(5)
+                print("Still waiting for " .. holder .. "...")
+            end
+            print(holder .. " rejoined! Resending trade request...")
+            sendWebhook("✅ " .. playerName .. " — Holder " .. holder .. " rejoined, resuming trades!")
+            task.wait(2)
             sendTrade(holder)
             timeout = 0
-        end
-        if not findPlayer(holder) then
-            warn(holder .. " left the game!")
-            return false
+        elseif timeout >= 10 then
+            print("Retrying trade request to " .. holder .. "...")
+            sendTrade(holder)
+            timeout = 0
         end
     end
 
@@ -338,15 +350,8 @@ local function doTrade(holder, petIds)
 end
 
 -- ============== MAIN ==============
-print("\nLooking for holder...")
-local holder = findHolder()
-
-if not holder then
-    warn("No holders in server!")
-    sendWebhook("❌ " .. playerName .. " — No holders in server")
-    completeAccount()
-    return
-end
+print("\nWaiting for holder to join...")
+local holder = waitForHolder()
 
 -- Get all pet IDs
 local allIds = getPetUniqueIds()
@@ -363,10 +368,17 @@ local initCount = #allIds
 local totalTraded = 0
 
 while #allIds > 0 do
+    -- If holder left between trades, wait for rejoin
     if not findPlayer(holder) then
-        warn(holder .. " left!")
-        sendWebhook("❌ " .. playerName .. " — Holder left")
-        break
+        warn(holder .. " left between trades — waiting for rejoin...")
+        sendWebhook("⚠️ " .. playerName .. " — Holder left between trades, waiting...")
+        while not findPlayer(holder) do
+            task.wait(5)
+            print("Waiting for " .. holder .. " to rejoin...")
+        end
+        print(holder .. " rejoined! Continuing...")
+        sendWebhook("✅ " .. playerName .. " — Holder rejoined, continuing trades!")
+        task.wait(2)
     end
 
     -- Take next batch of 18
