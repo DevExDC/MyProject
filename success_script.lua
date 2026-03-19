@@ -200,7 +200,6 @@ local function completeAccount()
     if completeFolder ~= "" then
         print("Step 1: Moving to completion folder...")
         pcall(function()
-            -- Try mark-done first
             local resp = request({
                 Url     = "https://api.farmsync.cloud/api/self/accounts/mark-done",
                 Method  = "POST",
@@ -210,28 +209,11 @@ local function completeAccount()
                 },
                 Body = hs:JSONEncode({
                     usernames        = {playerName},
-                    target_folder_id = completeFolder
+                    target_folder_id = completeFolder,
+                    source_folder_id = ""
                 })
             })
             print("  mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
-
-            -- If mark-done fails, fallback to direct move
-            if resp.StatusCode ~= 200 then
-                print("  mark-done failed, trying direct move...")
-                local resp2 = request({
-                    Url     = "https://api.farmsync.cloud/api/self/accounts/move",
-                    Method  = "POST",
-                    Headers = {
-                        ["Authorization"] = "Bearer " .. api,
-                        ["Content-Type"]  = "application/json"
-                    },
-                    Body = hs:JSONEncode({
-                        usernames = {playerName},
-                        folder_id = completeFolder
-                    })
-                })
-                print("  move: " .. tostring(resp2.StatusCode) .. " | " .. tostring(resp2.Body))
-            end
         end)
         task.wait(2)
     end
