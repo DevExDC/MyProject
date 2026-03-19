@@ -35,13 +35,9 @@ end)
 getgenv().Config = getgenv().Config or {
     usernames            = {},
     pets_to_trade        = {},
-    NEON_ONLY            = false,
-    MEGA_ONLY            = false,
-    FULL_GROWN_ONLY      = false,
     Webhook              = "",
-    FARMSYNC_API_KEY     = "",   -- required for auto-disable
-    ORIGIN_FOLDER_ID     = "",   -- folder accounts come from
-    COMPLETION_FOLDER_ID = ""    -- folder to move to when done
+    FARMSYNC_API_KEY     = "",   -- required for auto-disable signal to tool
+    COMPLETION_FOLDER_ID = ""    -- folder to move account when done trading
 }
 local config = getgenv().Config
 
@@ -65,9 +61,7 @@ print("  Player: " .. playerName)
 print("===========================================")
 print("Pets    : " .. #config.pets_to_trade .. " type(s)")
 print("Holders : " .. table.concat(config.usernames, ", "))
-print("Neon    : " .. tostring(config.NEON_ONLY))
-print("Mega    : " .. tostring(config.MEGA_ONLY))
-print("FG Only : " .. tostring(config.FULL_GROWN_ONLY))
+
 
 print("===========================================")
 
@@ -128,29 +122,9 @@ local function getPetUniqueIds()
         for _, pet in pairs(pd.inventory.pets) do
             for _, kind in ipairs(resolvedKinds) do
                 if pet.kind == kind then
-                    local props   = pet.properties or {}
-                    local is_neon = props.neon or false
-                    local is_mega = props.mega_neon or false
-                    local age     = props.age or 0
-
-                    local ok = true
-
-                    if config.FULL_GROWN_ONLY and age ~= 6 then ok = false end
-
-                    if ok then
-                        if config.MEGA_ONLY then
-                            if not is_mega then ok = false end
-                        elseif config.NEON_ONLY then
-                            if is_mega or not is_neon then ok = false end
-                        else
-                            if is_neon or is_mega then ok = false end
-                        end
-                    end
-
-                    if ok then
-                        table.insert(ids, pet.unique)
-                        counts[kind] = (counts[kind] or 0) + 1
-                    end
+                    -- Trade ALL versions (normal, neon, mega)
+                    table.insert(ids, pet.unique)
+                    counts[kind] = (counts[kind] or 0) + 1
                     break
                 end
             end
@@ -210,51 +184,56 @@ local function sendWebhook(msg)
 end
 
 -- ============== COMPLETE ACCOUNT ==============
--- Step 1: Move to completion folder via FarmSync client ChangeToFolder
--- Step 2: Disable via API so the tool detects completion and pulls next account
+-- Step 1: Move to completion folder via mark-done API
+-- Step 2: Disable so the tool detects it and pulls next account
 local function completeAccount()
     local api            = config.FARMSYNC_API_KEY or ""
-    local originFolder   = config.ORIGIN_FOLDER_ID or ""
     local completeFolder = config.COMPLETION_FOLDER_ID or ""
+    local hs             = game:GetService("HttpService")
 
-    -- Step 1: Move to completion folder using FarmSync client
-    if originFolder ~= "" and completeFolder ~= "" then
-        print("Step 1: Moving to completion folder...")
-        pcall(function()
-            local changed = getgenv().client:ChangeToFolder(
-                originFolder,    -- from folder
-                completeFolder,  -- to folder
-                true,            -- change without replacement (dont wait for new account)
-                nil              -- keep current config
-            )
-            print("  ChangeToFolder result: " .. tostring(changed))
-        end)
-        task.wait(2)
-    else
-        print("Step 1: Skipped (no folder IDs set)")
+    if api == "" then
+        print("No API key set — skipping completion")
+        return
     end
 
-    -- Step 2: Disable via API so Python tool detects it
-    if api ~= "" then
-        print("Step 2: Disabling account...")
+    -- Step 1: Move to completion folder
+    if completeFolder ~= "" then
+        print("Step 1: Moving to completion folder...")
         pcall(function()
-            local hs   = game:GetService("HttpService")
             local resp = request({
-                Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
-                Method  = "PUT",
+                Url     = "https://api.farmsync.cloud/api/self/accounts/mark-done",
+                Method  = "POST",
                 Headers = {
                     ["Authorization"] = "Bearer " .. api,
                     ["Content-Type"]  = "application/json"
                 },
-                Body = hs:JSONEncode({enabled = false})
+                Body = hs:JSONEncode({
+                    usernames        = {playerName},
+                    target_folder_id = completeFolder,
+                    source_folder_id = ""
+                })
             })
-            print("  disable status: " .. tostring(resp.StatusCode))
+            print("  mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
         end)
-    else
-        print("Step 2: No API key — tool will detect via polling")
+        task.wait(2)
     end
 
-    print("Account complete!")
+    -- Step 2: Disable to signal the tool
+    print("Step 2: Disabling account...")
+    pcall(function()
+        local resp = request({
+            Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
+            Method  = "PUT",
+            Headers = {
+                ["Authorization"] = "Bearer " .. api,
+                ["Content-Type"]  = "application/json"
+            },
+            Body = hs:JSONEncode({enabled = false})
+        })
+        print("  disabled: " .. tostring(resp.StatusCode))
+    end)
+
+    print("Done!")
 end
 
 -- ============== FIND HOLDER ==============
