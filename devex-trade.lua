@@ -1,14 +1,12 @@
 -- ============================================
--- ULTIMATE PET TRADER
--- Single pet OR multiple pets mixed
--- Single user OR multiple users
--- Case-insensitive usernames and pet names
+-- ULTIMATE PET TRADER V3
+-- Fixed config system + Progress UI
 -- ============================================
 
 local CONFIG = getgenv().TradeConfig
 
 if not CONFIG then
-    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.\n\nExamples:\n\n-- Single pet, single user:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAME = \"Dog\",\n    AMOUNT = 50,\n    NEON_ONLY = false,\n    MEGA_ONLY = false,\n    FULL_GROWN_ONLY = false,\n    AUTO_KICK = true,\n    NORMAL_MODE = false,\n}\n\n-- Multiple pets mixed:\ngetgenv().TradeConfig = {\n    USERNAME = \"Player123\",\n    PET_NAMES = {\"Dog\", \"Cat\", \"Pomeranian\"},\n    FULL_GROWN_ONLY = false,\n    AUTO_KICK = true,\n    NORMAL_MODE = false,\n}\n")
+    error("❌ ERROR: No configuration found!\n\nPlease set getgenv().TradeConfig BEFORE loading the script.")
 end
 
 -- ============================================
@@ -23,6 +21,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
+local CoreGui = game:GetService("CoreGui")
 
 -- Anti-AFK
 local VirtualUser = game:GetService("VirtualUser")
@@ -42,6 +41,87 @@ local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 if CONFIG.AUTO_KICK == nil then CONFIG.AUTO_KICK = false end
 if CONFIG.NORMAL_MODE == nil then CONFIG.NORMAL_MODE = false end
 if CONFIG.FULL_GROWN_ONLY == nil then CONFIG.FULL_GROWN_ONLY = false end
+
+-- ============================================
+-- PROGRESS UI
+-- ============================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TradeProgressUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Try PlayerGui first, fallback to CoreGui
+local success = pcall(function()
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end)
+if not success then
+    ScreenGui.Parent = CoreGui
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 400, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -100)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -20, 0, 40)
+Title.Position = UDim2.new(0, 10, 0, 10)
+Title.BackgroundTransparency = 1
+Title.Text = "🚀 ULTIMATE PET TRADER"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 18
+Title.Font = Enum.Font.GothamBold
+Title.Parent = MainFrame
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, -20, 0, 30)
+StatusLabel.Position = UDim2.new(0, 10, 0, 60)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Status: Initializing..."
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusLabel.TextSize = 14
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = MainFrame
+
+local ProgressLabel = Instance.new("TextLabel")
+ProgressLabel.Name = "ProgressLabel"
+ProgressLabel.Size = UDim2.new(1, -20, 0, 30)
+ProgressLabel.Position = UDim2.new(0, 10, 0, 100)
+ProgressLabel.BackgroundTransparency = 1
+ProgressLabel.Text = "Progress: 0/0"
+ProgressLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+ProgressLabel.TextSize = 14
+ProgressLabel.Font = Enum.Font.Gotham
+ProgressLabel.TextXAlignment = Enum.TextXAlignment.Left
+ProgressLabel.Parent = MainFrame
+
+local DetailLabel = Instance.new("TextLabel")
+DetailLabel.Name = "DetailLabel"
+DetailLabel.Size = UDim2.new(1, -20, 0, 30)
+DetailLabel.Position = UDim2.new(0, 10, 0, 140)
+DetailLabel.BackgroundTransparency = 1
+DetailLabel.Text = ""
+DetailLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+DetailLabel.TextSize = 12
+DetailLabel.Font = Enum.Font.Gotham
+DetailLabel.TextXAlignment = Enum.TextXAlignment.Left
+DetailLabel.Parent = MainFrame
+
+local function updateUI(status, progress, detail)
+    if StatusLabel then StatusLabel.Text = "Status: " .. status end
+    if ProgressLabel and progress then ProgressLabel.Text = "Progress: " .. progress end
+    if DetailLabel and detail then DetailLabel.Text = detail end
+end
 
 -- ============================================
 -- CASE-INSENSITIVE PLAYER FINDER
@@ -88,7 +168,6 @@ local MIXED_MODE = false
 local MULTI_USER_MODE = false
 
 if CONFIG.PET_NAMES then
-    -- MODE: Multiple pets mixed to single user
     MIXED_MODE = true
     for _, petName in ipairs(CONFIG.PET_NAMES) do
         table.insert(petsList, {
@@ -98,7 +177,6 @@ if CONFIG.PET_NAMES then
         })
     end
 elseif CONFIG.PETS then
-    -- MODE: Multiple pets with individual settings
     MIXED_MODE = true
     for _, petConfig in ipairs(CONFIG.PETS) do
         table.insert(petsList, {
@@ -109,7 +187,6 @@ elseif CONFIG.PETS then
         })
     end
 elseif CONFIG.PET_NAME then
-    -- MODE: Single pet
     table.insert(petsList, {
         PET_NAME = CONFIG.PET_NAME,
         AMOUNT = CONFIG.AMOUNT,
@@ -140,7 +217,6 @@ if MULTI_USER_MODE and CONFIG.AMOUNTS then
         end
     end
     
-    -- Only validate AMOUNTS length if NOT in mixed mode
     if not MIXED_MODE and #CONFIG.USERNAMES ~= #CONFIG.AMOUNTS then
         error("❌ ERROR: USERNAMES and AMOUNTS must have the same number of entries!")
     end
@@ -149,7 +225,7 @@ end
 -- ============================================
 -- RESOLVE ALL PET NAMES
 -- ============================================
-print("\n🔍 Resolving pet names...")
+updateUI("Resolving pet names...", "", "")
 for i, petConfig in ipairs(petsList) do
     local resolved_kind, resolved_data = resolveItem(petConfig.PET_NAME)
     
@@ -158,47 +234,11 @@ for i, petConfig in ipairs(petsList) do
     end
     
     petConfig.PET_KIND = resolved_kind
-    print(string.format("  %d. %s → %s", i, petConfig.PET_NAME, resolved_kind))
 end
-
--- ============================================
--- HEADER
--- ============================================
-print("\n===========================================")
-print("  ULTIMATE PET TRADER")
-print("===========================================")
-if MIXED_MODE then
-    print("Mode:         MIXED PETS")
-    print("Pet Types:    " .. #petsList)
-    for i, pet in ipairs(petsList) do
-        local amountText = pet.AMOUNT and tostring(pet.AMOUNT) or "ALL"
-        local filterText = ""
-        if pet.NEON_ONLY then filterText = " (neon)"
-        elseif pet.MEGA_ONLY then filterText = " (mega)" end
-        print(string.format("  %d. %s - %s%s", i, pet.PET_NAME, amountText, filterText))
-    end
-else
-    print("Mode:         SINGLE PET")
-    print("Pet Name:     " .. petsList[1].PET_NAME)
-    print("Pet Kind:     " .. petsList[1].PET_KIND)
-    print("Neon Only:    " .. tostring(petsList[1].NEON_ONLY))
-    print("Mega Only:    " .. tostring(petsList[1].MEGA_ONLY))
-end
-print("Full Grown:   " .. tostring(CONFIG.FULL_GROWN_ONLY))
-print("Normal Mode:  " .. tostring(CONFIG.NORMAL_MODE))
-print("Auto Kick:    " .. tostring(CONFIG.AUTO_KICK))
-print("\nTarget Users: " .. #CONFIG.USERNAMES)
-for i, username in ipairs(CONFIG.USERNAMES) do
-    local amountText = CONFIG.AMOUNTS and CONFIG.AMOUNTS[i] or "ALL PETS"
-    print(string.format("  %d. %s → %s", i, username, amountText))
-end
-print("===========================================\n")
 
 -- ============================================
 -- PET COLLECTION FUNCTIONS
 -- ============================================
-
--- For SINGLE pet mode
 local function get_single_pet_type(petConfig, count)
     local pets = {}
     
@@ -216,12 +256,10 @@ local function get_single_pet_type(petConfig, count)
                 local is_mega = pet.properties and pet.properties.mega_neon
                 local pet_age = pet.properties and pet.properties.age or 0
                 
-                -- Full grown filter
                 if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
                     shouldInclude = false
                 end
                 
-                -- Type filter
                 if shouldInclude then
                     if petConfig.MEGA_ONLY then
                         if not is_mega then shouldInclude = false end
@@ -243,7 +281,6 @@ local function get_single_pet_type(petConfig, count)
     return pets
 end
 
--- For MIXED pets mode
 local function get_mixed_pets(batch_size, petTypeStats)
     local pets = {}
     
@@ -267,12 +304,10 @@ local function get_mixed_pets(batch_size, petTypeStats)
                         local is_mega = pet.properties and pet.properties.mega_neon
                         local pet_age = pet.properties and pet.properties.age or 0
                         
-                        -- Full grown filter
                         if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
                             shouldInclude = false
                         end
                         
-                        -- Type filter
                         if shouldInclude then
                             if petConfig.MEGA_ONLY then
                                 if not is_mega then shouldInclude = false end
@@ -309,10 +344,7 @@ end
 -- ============================================
 local function send_trade(username)
     local target = findPlayer(username)
-    if not target then
-        print("❌ Player not found: " .. username)
-        return false
-    end
+    if not target then return false end
     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
     return true
 end
@@ -333,23 +365,20 @@ end
 -- SINGLE PET MODE TRADING
 -- ============================================
 local function trade_single_pet_to_user(username, amount)
-    print("\n" .. ("="):rep(50))
-    print(string.format("🎯 TRADING TO: %s (%d pets)", username, amount))
-    print(("="):rep(50))
+    updateUI("Trading to " .. username, "0/" .. amount, "Finding player...")
     
-    local target = findPlayer(username)
-    if not target then
-        print("❌ ERROR: Player '" .. username .. "' is not in this server!")
-        return false
+    -- Wait for player if not in server
+    while not findPlayer(username) do
+        updateUI("Waiting for player...", "0/" .. amount, username .. " not in server")
+        task.wait(5)
     end
     
-    print("✅ Found player: " .. target.Name)
+    updateUI("Trading to " .. username, "0/" .. amount, "Player found!")
     
     local BATCH_SIZE = 18
     local total_traded = 0
     local trade_number = 1
     
-    -- Track initial inventory count
     local function get_current_pet_count()
         local count = 0
         pcall(function()
@@ -377,9 +406,7 @@ local function trade_single_pet_to_user(username, amount)
                             end
                         end
                         
-                        if shouldCount then
-                            count = count + 1
-                        end
+                        if shouldCount then count = count + 1 end
                     end
                 end
             end
@@ -391,24 +418,21 @@ local function trade_single_pet_to_user(username, amount)
         local remaining = amount - total_traded
         local this_batch = math.min(remaining, BATCH_SIZE)
         
-        print(string.format("\n========== TRADE #%d ==========", trade_number))
-        print(string.format("Progress: %d/%d pets traded", total_traded, amount))
+        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Trade #" .. trade_number .. " - Finding pets...")
         
-        -- Count pets BEFORE trade
         local pets_before = get_current_pet_count()
-        
         local pets = get_single_pet_type(petsList[1], this_batch)
         
         if #pets == 0 then
-            print("\n❌ No more pets available!")
+            updateUI("No pets available!", total_traded .. "/" .. amount, "❌ Cannot continue")
             return false
         end
         
-        print(string.format("✅ Found %d pets", #pets))
+        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Sending trade request...")
         
-        -- Send trade (keep retrying if player not found)
+        -- Send trade (infinite retry)
         while not send_trade(username) do
-            print("⚠️ Player not in server, waiting 5 seconds...")
+            updateUI("Waiting for player...", total_traded .. "/" .. amount, username .. " not in server")
             task.wait(5)
         end
         
@@ -421,36 +445,36 @@ local function trade_single_pet_to_user(username, amount)
             task.wait(0.5)
             timeout = timeout + 0.5
             
-            -- Every 10 seconds, retry sending trade
             if timeout >= 10 then
-                print("⚠️ Trade GUI didn't open, retrying trade request...")
+                updateUI("Retrying...", total_traded .. "/" .. amount, "Trade GUI didn't open")
                 send_trade(username)
                 timeout = 0
             end
         end
         
-        print("✅ Trade GUI opened!")
+        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Adding " .. #pets .. " pets...")
         
         -- Add pets
         local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
-        for _, petUnique in ipairs(pets) do
+        for i, petUnique in ipairs(pets) do
             add_pet(petUnique)
+            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Adding pets... (" .. i .. "/" .. #pets .. ")")
             task.wait(add_delay)
         end
         
-        -- Accept/Confirm
+        -- Wait for countdown
+        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Waiting for countdown...")
         task.wait(6)
         
         if CONFIG.NORMAL_MODE then
+            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Accepting...")
             accept_trade()
             task.wait(20)
+            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Confirming...")
             confirm_trade()
-            
-            -- Wait for trade to complete (infinite)
-            repeat
-                task.wait(0.5)
-            until not tradeGui.Visible
+            repeat task.wait(0.5) until not tradeGui.Visible
         else
+            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Auto-accepting...")
             local accept_spam = true
             task.spawn(function()
                 while accept_spam do pcall(accept_trade) task.wait(0.5) end
@@ -463,35 +487,29 @@ local function trade_single_pet_to_user(username, amount)
                 while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
             end)
             
-            -- Wait for trade to complete (infinite)
-            repeat
-                task.wait(0.5)
-            until not tradeGui.Visible
+            repeat task.wait(0.5) until not tradeGui.Visible
             
             accept_spam = false
             confirm_spam = false
         end
         
-        -- Count pets AFTER trade to see what actually got traded
+        -- Check actual traded amount
         task.wait(1)
         local pets_after = get_current_pet_count()
         local actually_traded = pets_before - pets_after
         
         if actually_traded > 0 then
             total_traded = total_traded + actually_traded
-            print(string.format("✅ Trade complete! Actually traded: %d | Progress: %d/%d", actually_traded, total_traded, amount))
+            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "✅ Trade #" .. trade_number .. " complete!")
         else
-            print("⚠️ Trade cancelled or failed, no pets deducted. Retrying...")
+            updateUI("Trade failed", total_traded .. "/" .. amount, "⚠️ Retrying...")
         end
         
         trade_number = trade_number + 1
-        
-        if total_traded < amount then
-            task.wait(2)
-        end
+        task.wait(2)
     end
     
-    print(string.format("\n✅ COMPLETE: Traded %d to %s", total_traded, username))
+    updateUI("✅ Complete!", total_traded .. "/" .. amount, "Traded to " .. username)
     return true
 end
 
@@ -499,24 +517,18 @@ end
 -- MIXED PETS MODE TRADING
 -- ============================================
 local function trade_mixed_pets_to_user(username)
-    print("\n" .. ("="):rep(50))
-    print(string.format("🎯 TRADING MIXED PETS TO: %s", username))
-    print(("="):rep(50))
+    updateUI("Trading mixed pets to " .. username, "", "Finding player...")
     
-    local target = findPlayer(username)
-    if not target then
-        print("❌ ERROR: Player '" .. username .. "' is not in this server!")
-        return false
+    while not findPlayer(username) do
+        updateUI("Waiting for player...", "", username .. " not in server")
+        task.wait(5)
     end
-    
-    print("✅ Found player: " .. target.Name)
     
     local BATCH_SIZE = 18
     local trade_number = 1
     local totalTraded = {}
     local petTypeStats = {}
     
-    -- Initialize stats
     for _, petConfig in ipairs(petsList) do
         totalTraded[petConfig.PET_KIND] = 0
         petTypeStats[petConfig.PET_KIND] = {
@@ -525,78 +537,24 @@ local function trade_mixed_pets_to_user(username)
         }
     end
     
-    -- Track inventory count per pet type
-    local function get_current_counts()
-        local counts = {}
+    while true do
+        local progress_text = ""
         for _, petConfig in ipairs(petsList) do
-            counts[petConfig.PET_KIND] = 0
+            progress_text = progress_text .. petConfig.PET_NAME .. ": " .. totalTraded[petConfig.PET_KIND] .. " | "
         end
         
-        pcall(function()
-            local playerData = Data.get_data()[playerName]
-            if playerData and playerData.inventory and playerData.inventory.pets then
-                for _, pet in pairs(playerData.inventory.pets) do
-                    for _, petConfig in ipairs(petsList) do
-                        if pet.kind == petConfig.PET_KIND then
-                            local is_neon = pet.properties and pet.properties.neon
-                            local is_mega = pet.properties and pet.properties.mega_neon
-                            local pet_age = pet.properties and pet.properties.age or 0
-                            
-                            local shouldCount = true
-                            
-                            if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
-                                shouldCount = false
-                            end
-                            
-                            if shouldCount then
-                                if petConfig.MEGA_ONLY then
-                                    if not is_mega then shouldCount = false end
-                                elseif petConfig.NEON_ONLY then
-                                    if is_mega or not is_neon then shouldCount = false end
-                                else
-                                    if is_neon or is_mega then shouldCount = false end
-                                end
-                            end
-                            
-                            if shouldCount then
-                                counts[petConfig.PET_KIND] = counts[petConfig.PET_KIND] + 1
-                            end
-                            break
-                        end
-                    end
-                end
-            end
-        end)
-        return counts
-    end
-    
-    while true do
-        print(string.format("\n========== TRADE #%d ==========", trade_number))
-        
-        -- Count BEFORE trade
-        local counts_before = get_current_counts()
+        updateUI("Trading to " .. username, progress_text, "Trade #" .. trade_number)
         
         local pets = get_mixed_pets(BATCH_SIZE, petTypeStats)
         
         if #pets == 0 then
-            print("✅ No more pets to trade!")
+            updateUI("✅ Complete!", progress_text, "All pets traded!")
             break
-        end
-        
-        -- Count pets in batch
-        local batchCount = {}
-        for _, pet in ipairs(pets) do
-            batchCount[pet.name] = (batchCount[pet.name] or 0) + 1
-        end
-        
-        print(string.format("📦 Found %d pets:", #pets))
-        for name, count in pairs(batchCount) do
-            print(string.format("   - %s: %d", name, count))
         end
         
         -- Send trade (infinite retry)
         while not send_trade(username) do
-            print("⚠️ Player not in server, waiting 5 seconds...")
+            updateUI("Waiting for player...", progress_text, username .. " not in server")
             task.wait(5)
         end
         
@@ -610,32 +568,27 @@ local function trade_mixed_pets_to_user(username)
             timeout = timeout + 0.5
             
             if timeout >= 10 then
-                print("⚠️ Trade GUI didn't open, retrying trade request...")
+                updateUI("Retrying...", progress_text, "Trade GUI didn't open")
                 send_trade(username)
                 timeout = 0
             end
         end
         
-        print("✅ Trade GUI opened!")
-        
         -- Add pets
+        updateUI("Trading to " .. username, progress_text, "Adding " .. #pets .. " pets...")
         local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
         for _, pet in ipairs(pets) do
             add_pet(pet.unique)
             task.wait(add_delay)
         end
         
-        -- Accept/Confirm
         task.wait(6)
         
         if CONFIG.NORMAL_MODE then
             accept_trade()
             task.wait(20)
             confirm_trade()
-            
-            repeat
-                task.wait(0.5)
-            until not tradeGui.Visible
+            repeat task.wait(0.5) until not tradeGui.Visible
         else
             local accept_spam = true
             task.spawn(function()
@@ -649,46 +602,19 @@ local function trade_mixed_pets_to_user(username)
                 while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
             end)
             
-            repeat
-                task.wait(0.5)
-            until not tradeGui.Visible
+            repeat task.wait(0.5) until not tradeGui.Visible
             
             accept_spam = false
             confirm_spam = false
         end
         
-        -- Count AFTER trade to see what actually got traded
-        task.wait(1)
-        local counts_after = get_current_counts()
-        
-        local actually_traded_any = false
-        for _, petConfig in ipairs(petsList) do
-            local kind = petConfig.PET_KIND
-            local traded = counts_before[kind] - counts_after[kind]
-            if traded > 0 then
-                totalTraded[kind] = totalTraded[kind] + traded
-                actually_traded_any = true
-                print(string.format("✅ %s: %d actually traded", petConfig.PET_NAME, traded))
-            end
+        for _, pet in ipairs(pets) do
+            totalTraded[pet.kind] = totalTraded[pet.kind] + 1
         end
         
-        if not actually_traded_any then
-            print("⚠️ Trade cancelled or failed, no pets deducted. Retrying...")
-        else
-            print(string.format("✅ Trade #%d complete!", trade_number))
-            trade_number = trade_number + 1
-        end
-        
+        trade_number = trade_number + 1
         task.wait(2)
     end
-    
-    -- Summary
-    print("\n" .. ("="):rep(50))
-    print("✅ COMPLETE:")
-    for _, petConfig in ipairs(petsList) do
-        print(string.format("   %s: %d traded", petConfig.PET_NAME, totalTraded[petConfig.PET_KIND]))
-    end
-    print(("="):rep(50))
     
     return true
 end
@@ -701,12 +627,7 @@ local function run_trader()
     local successful = 0
     local failed = 0
     
-    print("\n🚀 Starting trade process...")
-    print(string.format("Total users: %d", total_users))
-    
     for i, username in ipairs(CONFIG.USERNAMES) do
-        print(string.format("\n[%d/%d] Processing: %s", i, total_users, username))
-        
         local success
         if MIXED_MODE then
             success = trade_mixed_pets_to_user(username)
@@ -722,22 +643,13 @@ local function run_trader()
         end
         
         if i < total_users then
-            print("\n⏳ Waiting 3 seconds before next user...")
             task.wait(3)
         end
     end
     
-    -- Final summary
-    print("\n\n" .. ("="):rep(60))
-    print("🎉 ALL TRADES COMPLETE!")
-    print(("="):rep(60))
-    print(string.format("Total users: %d", total_users))
-    print(string.format("✅ Successful: %d", successful))
-    print(string.format("❌ Failed: %d", failed))
-    print(("="):rep(60))
+    updateUI("🎉 ALL COMPLETE!", successful .. " successful, " .. failed .. " failed", "")
     
     if CONFIG.AUTO_KICK then
-        print("\n🔴 AUTO_KICK enabled - Kicking in 3 seconds...")
         task.wait(3)
         LocalPlayer:Kick("✅ Trading complete!")
     end
