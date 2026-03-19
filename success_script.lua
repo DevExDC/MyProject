@@ -196,24 +196,23 @@ local function completeAccount()
         return
     end
 
-    -- Step 1: Move to completion folder
+    -- Step 1: Move to completion folder using /accounts/move
     if completeFolder ~= "" then
         print("Step 1: Moving to completion folder...")
         pcall(function()
             local resp = request({
-                Url     = "https://api.farmsync.cloud/api/self/accounts/mark-done",
+                Url     = "https://api.farmsync.cloud/api/self/accounts/move",
                 Method  = "POST",
                 Headers = {
                     ["Authorization"] = "Bearer " .. api,
                     ["Content-Type"]  = "application/json"
                 },
                 Body = hs:JSONEncode({
-                    usernames        = {playerName},
-                    target_folder_id = completeFolder,
-                    source_folder_id = ""
+                    usernames = {playerName},
+                    folder_id = completeFolder
                 })
             })
-            print("  mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
+            print("  move: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
         end)
         task.wait(2)
     end
