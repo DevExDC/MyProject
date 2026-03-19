@@ -209,8 +209,7 @@ local function completeAccount()
                 },
                 Body = hs:JSONEncode({
                     usernames        = {playerName},
-                    target_folder_id = completeFolder,
-                    source_folder_id = ""
+                    target_folder_id = completeFolder
                 })
             })
             print("  mark-done: " .. tostring(resp.StatusCode) .. " | " .. tostring(resp.Body))
