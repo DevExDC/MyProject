@@ -1,6 +1,7 @@
 -- ============================================
--- ULTIMATE PET TRADER V3
--- Fixed config system + Progress UI
+-- UNIVERSAL TRADER V4
+-- Trade ANY category: pets, vehicles, toys, food, etc.
+-- Supports category prefixes (1_ = pets, 2_ = vehicles, etc.)
 -- ============================================
 
 local CONFIG = getgenv().TradeConfig
@@ -21,7 +22,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local playerName = LocalPlayer.Name
-local CoreGui = game:GetService("CoreGui")
 
 -- Anti-AFK
 local VirtualUser = game:GetService("VirtualUser")
@@ -43,85 +43,16 @@ if CONFIG.NORMAL_MODE == nil then CONFIG.NORMAL_MODE = false end
 if CONFIG.FULL_GROWN_ONLY == nil then CONFIG.FULL_GROWN_ONLY = false end
 
 -- ============================================
--- PROGRESS UI
+-- CATEGORY MAPPINGS
 -- ============================================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TradeProgressUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
--- Try PlayerGui first, fallback to CoreGui
-local success = pcall(function()
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end)
-if not success then
-    ScreenGui.Parent = CoreGui
-end
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 400, 0, 200)
-MainFrame.Position = UDim2.new(0.5, -200, 0.5, -100)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -20, 0, 40)
-Title.Position = UDim2.new(0, 10, 0, 10)
-Title.BackgroundTransparency = 1
-Title.Text = "🚀 ULTIMATE PET TRADER"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 18
-Title.Font = Enum.Font.GothamBold
-Title.Parent = MainFrame
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Name = "StatusLabel"
-StatusLabel.Size = UDim2.new(1, -20, 0, 30)
-StatusLabel.Position = UDim2.new(0, 10, 0, 60)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: Initializing..."
-StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-StatusLabel.TextSize = 14
-StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatusLabel.Parent = MainFrame
-
-local ProgressLabel = Instance.new("TextLabel")
-ProgressLabel.Name = "ProgressLabel"
-ProgressLabel.Size = UDim2.new(1, -20, 0, 30)
-ProgressLabel.Position = UDim2.new(0, 10, 0, 100)
-ProgressLabel.BackgroundTransparency = 1
-ProgressLabel.Text = "Progress: 0/0"
-ProgressLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-ProgressLabel.TextSize = 14
-ProgressLabel.Font = Enum.Font.Gotham
-ProgressLabel.TextXAlignment = Enum.TextXAlignment.Left
-ProgressLabel.Parent = MainFrame
-
-local DetailLabel = Instance.new("TextLabel")
-DetailLabel.Name = "DetailLabel"
-DetailLabel.Size = UDim2.new(1, -20, 0, 30)
-DetailLabel.Position = UDim2.new(0, 10, 0, 140)
-DetailLabel.BackgroundTransparency = 1
-DetailLabel.Text = ""
-DetailLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-DetailLabel.TextSize = 12
-DetailLabel.Font = Enum.Font.Gotham
-DetailLabel.TextXAlignment = Enum.TextXAlignment.Left
-DetailLabel.Parent = MainFrame
-
-local function updateUI(status, progress, detail)
-    if StatusLabel then StatusLabel.Text = "Status: " .. status end
-    if ProgressLabel and progress then ProgressLabel.Text = "Progress: " .. progress end
-    if DetailLabel and detail then DetailLabel.Text = detail end
-end
+local CATEGORY_MAP = {
+    pets = "1",
+    vehicles = "2",
+    toys = "3",
+    food = "4",
+    gifts = "5",
+    -- Add more as needed
+}
 
 -- ============================================
 -- CASE-INSENSITIVE PLAYER FINDER
@@ -137,14 +68,19 @@ local function findPlayer(username)
 end
 
 -- ============================================
--- PET NAME RESOLVER (Case-insensitive)
+-- ITEM NAME RESOLVER (Any Category)
 -- ============================================
-local function resolveItem(input)
+local function resolveItem(input, category)
     local db = require(ReplicatedStorage:WaitForChild("ClientDB"):WaitForChild("Inventory"):WaitForChild("KindDB"))
     local search = input:lower()
     local nameMatch = nil
 
     for _, v in pairs(db) do
+        -- Filter by category if specified
+        if category and v.category and v.category:lower() ~= category:lower() then
+            continue
+        end
+        
         if v.kind and v.kind:lower() == search then
             return v.kind, v, "kind"
         end
@@ -161,498 +97,364 @@ local function resolveItem(input)
 end
 
 -- ============================================
--- DETECT MODE & BUILD PETS LIST
+-- GET CATEGORY PREFIX FOR ITEM
 -- ============================================
-local petsList = {}
+local function getCategoryPrefix(itemKind)
+    -- Get item data
+    local db = require(ReplicatedStorage:WaitForChild("ClientDB"):WaitForChild("Inventory"):WaitForChild("KindDB"))
+    
+    for _, v in pairs(db) do
+        if v.kind == itemKind then
+            local category = v.category or "pets"
+            
+            -- Map category name to number prefix
+            if category:lower():find("pet") then return "1"
+            elseif category:lower():find("vehicle") or category:lower():find("car") then return "2"
+            elseif category:lower():find("toy") then return "3"
+            elseif category:lower():find("food") then return "4"
+            elseif category:lower():find("gift") then return "5"
+            else return "1" end  -- Default to pets
+        end
+    end
+    
+    return "1"  -- Default
+end
+
+-- ============================================
+-- COUNT ITEMS OF SPECIFIC KIND
+-- ============================================
+local function countItems(itemKind, category)
+    local count = 0
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if not playerData or not playerData.inventory then return end
+        
+        -- Determine which inventory to check
+        local inventoryKey = "pets"  -- default
+        if category then
+            if category:lower():find("vehicle") then inventoryKey = "vehicles"
+            elseif category:lower():find("toy") then inventoryKey = "toys"
+            elseif category:lower():find("food") then inventoryKey = "food"
+            elseif category:lower():find("gift") then inventoryKey = "gifts"
+            end
+        end
+        
+        local items = playerData.inventory[inventoryKey]
+        if not items then return end
+        
+        for _, item in pairs(items) do
+            if item.kind == itemKind then
+                count = count + 1
+            end
+        end
+    end)
+    return count
+end
+
+-- ============================================
+-- GET ITEMS WITH FILTERS
+-- ============================================
+local function getFilteredItems(itemKind, filters, category)
+    local items = {}
+    
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if not playerData or not playerData.inventory then return end
+        
+        -- Determine inventory key
+        local inventoryKey = "pets"
+        if category then
+            if category:lower():find("vehicle") then inventoryKey = "vehicles"
+            elseif category:lower():find("toy") then inventoryKey = "toys"
+            elseif category:lower():find("food") then inventoryKey = "food"
+            elseif category:lower():find("gift") then inventoryKey = "gifts"
+            end
+        end
+        
+        local inventory = playerData.inventory[inventoryKey]
+        if not inventory then return end
+        
+        for _, item in pairs(inventory) do
+            if item.kind == itemKind then
+                local props = item.properties or {}
+                
+                -- Apply filters
+                if filters.NEON_ONLY and not props.neon then continue end
+                if filters.MEGA_ONLY and not props.mega_neon then continue end
+                if filters.FULL_GROWN_ONLY and (props.age or 0) ~= 6 then continue end
+                
+                table.insert(items, item.unique)
+            end
+        end
+    end)
+    
+    return items
+end
+
+-- ============================================
+-- DETECT MODE & BUILD ITEMS LIST
+-- ============================================
+local itemsList = {}
 local MIXED_MODE = false
 local MULTI_USER_MODE = false
 
-if CONFIG.PET_NAMES then
+if CONFIG.ITEM_NAMES then
+    -- MODE: Multiple items mixed
     MIXED_MODE = true
-    for _, petName in ipairs(CONFIG.PET_NAMES) do
-        table.insert(petsList, {
-            PET_NAME = petName,
+    for _, itemName in ipairs(CONFIG.ITEM_NAMES) do
+        table.insert(itemsList, {
+            ITEM_NAME = itemName,
+            CATEGORY = CONFIG.CATEGORY,
             NEON_ONLY = CONFIG.NEON_ONLY or false,
             MEGA_ONLY = CONFIG.MEGA_ONLY or false,
         })
     end
-elseif CONFIG.PETS then
-    MIXED_MODE = true
-    for _, petConfig in ipairs(CONFIG.PETS) do
-        table.insert(petsList, {
-            PET_NAME = petConfig.PET_NAME,
-            AMOUNT = petConfig.AMOUNT,
-            NEON_ONLY = petConfig.NEON_ONLY or CONFIG.NEON_ONLY or false,
-            MEGA_ONLY = petConfig.MEGA_ONLY or CONFIG.MEGA_ONLY or false,
+elseif CONFIG.ITEMS then
+    -- MODE: Custom items configuration
+    for _, itemConfig in ipairs(CONFIG.ITEMS) do
+        table.insert(itemsList, {
+            ITEM_NAME = itemConfig.NAME,
+            CATEGORY = itemConfig.CATEGORY,
+            AMOUNT = itemConfig.AMOUNT,
+            NEON_ONLY = itemConfig.NEON_ONLY or false,
+            MEGA_ONLY = itemConfig.MEGA_ONLY or false,
         })
     end
-elseif CONFIG.PET_NAME then
-    table.insert(petsList, {
-        PET_NAME = CONFIG.PET_NAME,
+else
+    -- MODE: Single item type
+    table.insert(itemsList, {
+        ITEM_NAME = CONFIG.ITEM_NAME or CONFIG.PET_NAME,
+        CATEGORY = CONFIG.CATEGORY,
         AMOUNT = CONFIG.AMOUNT,
         NEON_ONLY = CONFIG.NEON_ONLY or false,
         MEGA_ONLY = CONFIG.MEGA_ONLY or false,
     })
-else
-    error("❌ No pet configuration found! Use PET_NAME, PET_NAMES, or PETS")
 end
 
--- Detect multi-user mode
-if CONFIG.USERNAMES and #CONFIG.USERNAMES > 0 then
+-- Check for multi-user mode
+if CONFIG.USERNAMES then
     MULTI_USER_MODE = true
+end
+
+-- ============================================
+-- HEADER
+-- ============================================
+print("===========================================")
+print("  🔄 UNIVERSAL TRADER V4")
+print("  Trade any category: pets, vehicles, toys")
+print("===========================================")
+
+if MIXED_MODE then
+    print("🎯 MODE: Mixed Items")
+    print("Items: " .. table.concat(CONFIG.ITEM_NAMES or CONFIG.PET_NAMES, ", "))
+    print("To: " .. CONFIG.USERNAME)
+elseif MULTI_USER_MODE then
+    print("🎯 MODE: Multi-User")
+    print("Users: " .. #CONFIG.USERNAMES)
+    print("Item: " .. (CONFIG.ITEM_NAME or CONFIG.PET_NAME))
 else
-    CONFIG.USERNAMES = {CONFIG.USERNAME}
-    if CONFIG.AMOUNT then
-        CONFIG.AMOUNTS = {CONFIG.AMOUNT}
-    end
+    print("🎯 MODE: Single Item, Single User")
+    print("To: " .. CONFIG.USERNAME)
+    print("Item: " .. (CONFIG.ITEM_NAME or CONFIG.PET_NAME))
+    print("Amount: " .. CONFIG.AMOUNT)
 end
 
--- Smart AMOUNTS handling for multi-user
-if MULTI_USER_MODE and CONFIG.AMOUNTS then
-    if #CONFIG.AMOUNTS == 1 and #CONFIG.USERNAMES > 1 then
-        local single_amount = CONFIG.AMOUNTS[1]
-        CONFIG.AMOUNTS = {}
-        for i = 1, #CONFIG.USERNAMES do
-            CONFIG.AMOUNTS[i] = single_amount
-        end
-    end
-    
-    if not MIXED_MODE and #CONFIG.USERNAMES ~= #CONFIG.AMOUNTS then
-        error("❌ ERROR: USERNAMES and AMOUNTS must have the same number of entries!")
-    end
-end
-
--- ============================================
--- RESOLVE ALL PET NAMES
--- ============================================
-updateUI("Resolving pet names...", "", "")
-for i, petConfig in ipairs(petsList) do
-    local resolved_kind, resolved_data = resolveItem(petConfig.PET_NAME)
-    
-    if not resolved_kind then
-        error("❌ Could not resolve pet: " .. petConfig.PET_NAME)
-    end
-    
-    petConfig.PET_KIND = resolved_kind
-end
-
--- ============================================
--- PET COLLECTION FUNCTIONS
--- ============================================
-local function get_single_pet_type(petConfig, count)
-    local pets = {}
-    
-    pcall(function()
-        local playerData = Data.get_data()[playerName]
-        if not playerData or not playerData.inventory or not playerData.inventory.pets then
-            return
-        end
-        
-        for _, pet in pairs(playerData.inventory.pets) do
-            if pet.kind == petConfig.PET_KIND then
-                local shouldInclude = true
-                
-                local is_neon = pet.properties and pet.properties.neon
-                local is_mega = pet.properties and pet.properties.mega_neon
-                local pet_age = pet.properties and pet.properties.age or 0
-                
-                if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
-                    shouldInclude = false
-                end
-                
-                if shouldInclude then
-                    if petConfig.MEGA_ONLY then
-                        if not is_mega then shouldInclude = false end
-                    elseif petConfig.NEON_ONLY then
-                        if is_mega or not is_neon then shouldInclude = false end
-                    else
-                        if is_neon or is_mega then shouldInclude = false end
-                    end
-                end
-                
-                if shouldInclude then
-                    table.insert(pets, pet.unique)
-                    if #pets >= count then break end
-                end
-            end
-        end
-    end)
-    
-    return pets
-end
-
-local function get_mixed_pets(batch_size, petTypeStats)
-    local pets = {}
-    
-    pcall(function()
-        local playerData = Data.get_data()[playerName]
-        if not playerData or not playerData.inventory or not playerData.inventory.pets then
-            return
-        end
-        
-        for _, pet in pairs(playerData.inventory.pets) do
-            if #pets >= batch_size then break end
-            
-            for _, petConfig in ipairs(petsList) do
-                if pet.kind == petConfig.PET_KIND then
-                    local stats = petTypeStats[petConfig.PET_KIND]
-                    
-                    if stats.collected < stats.target then
-                        local shouldInclude = true
-                        
-                        local is_neon = pet.properties and pet.properties.neon
-                        local is_mega = pet.properties and pet.properties.mega_neon
-                        local pet_age = pet.properties and pet.properties.age or 0
-                        
-                        if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
-                            shouldInclude = false
-                        end
-                        
-                        if shouldInclude then
-                            if petConfig.MEGA_ONLY then
-                                if not is_mega then shouldInclude = false end
-                            elseif petConfig.NEON_ONLY then
-                                if is_mega or not is_neon then shouldInclude = false end
-                            else
-                                if is_neon or is_mega then shouldInclude = false end
-                            end
-                        end
-                        
-                        if shouldInclude then
-                            table.insert(pets, {
-                                unique = pet.unique,
-                                kind = petConfig.PET_KIND,
-                                name = petConfig.PET_NAME
-                            })
-                            stats.collected = stats.collected + 1
-                            
-                            if #pets >= batch_size then break end
-                        end
-                    end
-                    
-                    break
-                end
-            end
-        end
-    end)
-    
-    return pets
-end
+print("===========================================")
 
 -- ============================================
 -- TRADE FUNCTIONS
 -- ============================================
-local function send_trade(username)
-    local target = findPlayer(username)
-    if not target then return false end
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/SendTradeRequest"):FireServer(target)
-    return true
+
+local function requestTrade(player)
+    local success = false
+    pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/RequestTrade"):InvokeServer(player, {})
+        success = true
+    end)
+    return success
 end
 
-local function add_pet(unique)
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(unique)
+local function openTradeGUI()
+    local success = false
+    pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/OpenTradingUI"):InvokeServer({})
+        success = true
+    end)
+    return success
 end
 
-local function accept_trade()
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptNegotiation"):FireServer()
+local function addItemToTrade(itemUnique, categoryPrefix)
+    local success = false
+    pcall(function()
+        local itemId = categoryPrefix .. "_" .. itemUnique
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AddItemToOffer"):FireServer(itemId)
+        success = true
+    end)
+    return success
 end
 
-local function confirm_trade()
-    ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer()
+local function acceptTrade()
+    pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptTradeRequest"):FireServer()
+    end)
+end
+
+local function confirmTrade()
+    pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/ConfirmTrade"):FireServer({})
+    end)
 end
 
 -- ============================================
--- SINGLE PET MODE TRADING
+-- MAIN TRADING LOGIC
 -- ============================================
-local function trade_single_pet_to_user(username, amount)
-    updateUI("Trading to " .. username, "0/" .. amount, "Finding player...")
+local function tradeToUser(username, itemName, amount, filters, category)
+    print(string.format("\n🎯 Starting trade to: %s", username))
+    print(string.format("📦 Item: %s | Amount: %d", itemName, amount))
     
-    -- Wait for player if not in server
-    while not findPlayer(username) do
-        updateUI("Waiting for player...", "0/" .. amount, username .. " not in server")
-        task.wait(5)
+    -- Resolve item
+    local itemKind, itemData = resolveItem(itemName, category)
+    if not itemKind then
+        print("❌ Could not resolve item: " .. itemName)
+        return false
     end
     
-    updateUI("Trading to " .. username, "0/" .. amount, "Player found!")
+    -- Get category prefix
+    local categoryPrefix = getCategoryPrefix(itemKind)
+    print(string.format("📁 Category prefix: %s", categoryPrefix))
     
-    local BATCH_SIZE = 18
-    local total_traded = 0
-    local trade_number = 1
+    -- Get filtered items
+    local availableItems = getFilteredItems(itemKind, filters, category)
+    print(string.format("✅ Found %d items available", #availableItems))
     
-    local function get_current_pet_count()
-        local count = 0
-        pcall(function()
-            local playerData = Data.get_data()[playerName]
-            if playerData and playerData.inventory and playerData.inventory.pets then
-                for _, pet in pairs(playerData.inventory.pets) do
-                    if pet.kind == petsList[1].PET_KIND then
-                        local is_neon = pet.properties and pet.properties.neon
-                        local is_mega = pet.properties and pet.properties.mega_neon
-                        local pet_age = pet.properties and pet.properties.age or 0
-                        
-                        local shouldCount = true
-                        
-                        if CONFIG.FULL_GROWN_ONLY and pet_age ~= 6 then
-                            shouldCount = false
-                        end
-                        
-                        if shouldCount then
-                            if petsList[1].MEGA_ONLY then
-                                if not is_mega then shouldCount = false end
-                            elseif petsList[1].NEON_ONLY then
-                                if is_mega or not is_neon then shouldCount = false end
-                            else
-                                if is_neon or is_mega then shouldCount = false end
-                            end
-                        end
-                        
-                        if shouldCount then count = count + 1 end
+    if #availableItems < amount then
+        print(string.format("⚠️ Warning: Only have %d items, need %d", #availableItems, amount))
+    end
+    
+    local totalTraded = 0
+    local tradeCount = 0
+    
+    while totalTraded < amount do
+        tradeCount = tradeCount + 1
+        print(string.format("\n--- Trade #%d ---", tradeCount))
+        
+        -- Find player
+        local targetPlayer = findPlayer(username)
+        while not targetPlayer do
+            print("⏳ Waiting for player...")
+            task.wait(5)
+            targetPlayer = findPlayer(username)
+        end
+        
+        -- Request trade
+        print("📤 Requesting trade...")
+        while not requestTrade(targetPlayer) do
+            task.wait(1)
+        end
+        task.wait(2)
+        
+        -- Open GUI
+        print("🖥️ Opening trade GUI...")
+        while not openTradeGUI() do
+            task.wait(10)
+        end
+        task.wait(2)
+        
+        -- Add items
+        local neededThisTrade = math.min(4, amount - totalTraded)
+        print(string.format("➕ Adding %d items...", neededThisTrade))
+        
+        local addedCount = 0
+        for i = totalTraded + 1, totalTraded + neededThisTrade do
+            if availableItems[i] then
+                if addItemToTrade(availableItems[i], categoryPrefix) then
+                    addedCount = addedCount + 1
+                    if not CONFIG.NORMAL_MODE then
+                        task.wait(0.2)
+                    else
+                        task.wait(3)
                     end
                 end
             end
-        end)
-        return count
-    end
-    
-    while total_traded < amount do
-        local remaining = amount - total_traded
-        local this_batch = math.min(remaining, BATCH_SIZE)
-        
-        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Trade #" .. trade_number .. " - Finding pets...")
-        
-        local pets_before = get_current_pet_count()
-        local pets = get_single_pet_type(petsList[1], this_batch)
-        
-        if #pets == 0 then
-            updateUI("No pets available!", total_traded .. "/" .. amount, "❌ Cannot continue")
-            return false
         end
         
-        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Sending trade request...")
+        print(string.format("✅ Added %d items", addedCount))
         
-        -- Send trade (infinite retry)
-        while not send_trade(username) do
-            updateUI("Waiting for player...", total_traded .. "/" .. amount, username .. " not in server")
-            task.wait(5)
-        end
-        
+        -- Accept & Confirm
         task.wait(2)
-        
-        -- Wait for GUI (infinite retry)
-        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-        local timeout = 0
-        while not tradeGui.Visible do
-            task.wait(0.5)
-            timeout = timeout + 0.5
-            
-            if timeout >= 10 then
-                updateUI("Retrying...", total_traded .. "/" .. amount, "Trade GUI didn't open")
-                send_trade(username)
-                timeout = 0
-            end
-        end
-        
-        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Adding " .. #pets .. " pets...")
-        
-        -- Add pets
-        local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
-        for i, petUnique in ipairs(pets) do
-            add_pet(petUnique)
-            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Adding pets... (" .. i .. "/" .. #pets .. ")")
-            task.wait(add_delay)
-        end
-        
-        -- Wait for countdown
-        updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Waiting for countdown...")
-        task.wait(6)
+        print("✅ Accepting trade...")
         
         if CONFIG.NORMAL_MODE then
-            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Accepting...")
-            accept_trade()
+            acceptTrade()
             task.wait(20)
-            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Confirming...")
-            confirm_trade()
-            repeat task.wait(0.5) until not tradeGui.Visible
-        else
-            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "Auto-accepting...")
-            local accept_spam = true
-            task.spawn(function()
-                while accept_spam do pcall(accept_trade) task.wait(0.5) end
-            end)
-            
-            task.wait(1)
-            
-            local confirm_spam = true
-            task.spawn(function()
-                while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
-            end)
-            
-            repeat task.wait(0.5) until not tradeGui.Visible
-            
-            accept_spam = false
-            confirm_spam = false
-        end
-        
-        -- Check actual traded amount
-        task.wait(1)
-        local pets_after = get_current_pet_count()
-        local actually_traded = pets_before - pets_after
-        
-        if actually_traded > 0 then
-            total_traded = total_traded + actually_traded
-            updateUI("Trading to " .. username, total_traded .. "/" .. amount, "✅ Trade #" .. trade_number .. " complete!")
-        else
-            updateUI("Trade failed", total_traded .. "/" .. amount, "⚠️ Retrying...")
-        end
-        
-        trade_number = trade_number + 1
-        task.wait(2)
-    end
-    
-    updateUI("✅ Complete!", total_traded .. "/" .. amount, "Traded to " .. username)
-    return true
-end
-
--- ============================================
--- MIXED PETS MODE TRADING
--- ============================================
-local function trade_mixed_pets_to_user(username)
-    updateUI("Trading mixed pets to " .. username, "", "Finding player...")
-    
-    while not findPlayer(username) do
-        updateUI("Waiting for player...", "", username .. " not in server")
-        task.wait(5)
-    end
-    
-    local BATCH_SIZE = 18
-    local trade_number = 1
-    local totalTraded = {}
-    local petTypeStats = {}
-    
-    for _, petConfig in ipairs(petsList) do
-        totalTraded[petConfig.PET_KIND] = 0
-        petTypeStats[petConfig.PET_KIND] = {
-            collected = 0,
-            target = petConfig.AMOUNT or math.huge
-        }
-    end
-    
-    while true do
-        local progress_text = ""
-        for _, petConfig in ipairs(petsList) do
-            progress_text = progress_text .. petConfig.PET_NAME .. ": " .. totalTraded[petConfig.PET_KIND] .. " | "
-        end
-        
-        updateUI("Trading to " .. username, progress_text, "Trade #" .. trade_number)
-        
-        local pets = get_mixed_pets(BATCH_SIZE, petTypeStats)
-        
-        if #pets == 0 then
-            updateUI("✅ Complete!", progress_text, "All pets traded!")
-            break
-        end
-        
-        -- Send trade (infinite retry)
-        while not send_trade(username) do
-            updateUI("Waiting for player...", progress_text, username .. " not in server")
+            confirmTrade()
             task.wait(5)
-        end
-        
-        task.wait(2)
-        
-        -- Wait for GUI (infinite retry)
-        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-        local timeout = 0
-        while not tradeGui.Visible do
-            task.wait(0.5)
-            timeout = timeout + 0.5
-            
-            if timeout >= 10 then
-                updateUI("Retrying...", progress_text, "Trade GUI didn't open")
-                send_trade(username)
-                timeout = 0
+        else
+            for i = 1, 20 do
+                acceptTrade()
+                confirmTrade()
+                task.wait(0.1)
             end
-        end
-        
-        -- Add pets
-        updateUI("Trading to " .. username, progress_text, "Adding " .. #pets .. " pets...")
-        local add_delay = CONFIG.NORMAL_MODE and 3.0 or 0.2
-        for _, pet in ipairs(pets) do
-            add_pet(pet.unique)
-            task.wait(add_delay)
-        end
-        
-        task.wait(6)
-        
-        if CONFIG.NORMAL_MODE then
-            accept_trade()
-            task.wait(20)
-            confirm_trade()
-            repeat task.wait(0.5) until not tradeGui.Visible
-        else
-            local accept_spam = true
-            task.spawn(function()
-                while accept_spam do pcall(accept_trade) task.wait(0.5) end
-            end)
-            
-            task.wait(1)
-            
-            local confirm_spam = true
-            task.spawn(function()
-                while confirm_spam do pcall(confirm_trade) task.wait(0.5) end
-            end)
-            
-            repeat task.wait(0.5) until not tradeGui.Visible
-            
-            accept_spam = false
-            confirm_spam = false
-        end
-        
-        for _, pet in ipairs(pets) do
-            totalTraded[pet.kind] = totalTraded[pet.kind] + 1
-        end
-        
-        trade_number = trade_number + 1
-        task.wait(2)
-    end
-    
-    return true
-end
-
--- ============================================
--- MAIN EXECUTION
--- ============================================
-local function run_trader()
-    local total_users = #CONFIG.USERNAMES
-    local successful = 0
-    local failed = 0
-    
-    for i, username in ipairs(CONFIG.USERNAMES) do
-        local success
-        if MIXED_MODE then
-            success = trade_mixed_pets_to_user(username)
-        else
-            local amount = CONFIG.AMOUNTS[i]
-            success = trade_single_pet_to_user(username, amount)
-        end
-        
-        if success then
-            successful = successful + 1
-        else
-            failed = failed + 1
-        end
-        
-        if i < total_users then
             task.wait(3)
         end
+        
+        totalTraded = totalTraded + addedCount
+        print(string.format("📊 Progress: %d/%d", totalTraded, amount))
     end
     
-    updateUI("🎉 ALL COMPLETE!", successful .. " successful, " .. failed .. " failed", "")
-    
-    if CONFIG.AUTO_KICK then
-        task.wait(3)
-        LocalPlayer:Kick("✅ Trading complete!")
-    end
+    print(string.format("✅ COMPLETE! Traded %d items to %s", totalTraded, username))
+    return true
 end
 
-run_trader()
+-- ============================================
+-- EXECUTE TRADES
+-- ============================================
+
+if MULTI_USER_MODE then
+    -- Multi-user mode
+    for i, username in ipairs(CONFIG.USERNAMES) do
+        local amount = CONFIG.AMOUNTS and CONFIG.AMOUNTS[i] or CONFIG.AMOUNT
+        local filters = {
+            NEON_ONLY = CONFIG.NEON_ONLY,
+            MEGA_ONLY = CONFIG.MEGA_ONLY,
+            FULL_GROWN_ONLY = CONFIG.FULL_GROWN_ONLY,
+        }
+        
+        tradeToUser(username, CONFIG.ITEM_NAME or CONFIG.PET_NAME, amount, filters, CONFIG.CATEGORY)
+    end
+elseif MIXED_MODE then
+    -- Mixed items mode - trade all items to one user
+    for _, item in ipairs(itemsList) do
+        local filters = {
+            NEON_ONLY = item.NEON_ONLY,
+            MEGA_ONLY = item.MEGA_ONLY,
+            FULL_GROWN_ONLY = CONFIG.FULL_GROWN_ONLY,
+        }
+        
+        local count = countItems(resolveItem(item.ITEM_NAME, item.CATEGORY), item.CATEGORY)
+        if count > 0 then
+            tradeToUser(CONFIG.USERNAME, item.ITEM_NAME, count, filters, item.CATEGORY)
+        end
+    end
+else
+    -- Single item, single user
+    local filters = {
+        NEON_ONLY = CONFIG.NEON_ONLY,
+        MEGA_ONLY = CONFIG.MEGA_ONLY,
+        FULL_GROWN_ONLY = CONFIG.FULL_GROWN_ONLY,
+    }
+    
+    tradeToUser(CONFIG.USERNAME, CONFIG.ITEM_NAME or CONFIG.PET_NAME, CONFIG.AMOUNT, filters, CONFIG.CATEGORY)
+end
+
+-- ============================================
+-- CLEANUP
+-- ============================================
+
+if CONFIG.AUTO_KICK then
+    print("\n🔴 Auto-kick enabled - Kicking in 5s...")
+    task.wait(5)
+    LocalPlayer:Kick("Trading complete!")
+end
+
+print("\n✅ ALL TRADES COMPLETE!")
