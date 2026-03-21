@@ -731,9 +731,8 @@ local function run_aging()
         playerName, total_pets, CONFIG.PET_KIND, total_potions))
 
     local cycle = 0
-    local MAX_CYCLES = 100
 
-    while cycle < MAX_CYCLES do
+    while true do
         cycle = cycle + 1
         print(string.format("\n========== CYCLE %d ==========", cycle))
 
