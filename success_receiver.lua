@@ -42,6 +42,15 @@ local FULL_GROWN_ONLY  = CONFIG.full_grown_only   or false
 if USERNAME == "" then error("No username set in config!") end
 if #PET_NAMES == 0 then error("No pet_names set in config!") end
 
+-- Build filter mode string early so UI can use it
+local filterMode
+if MEGA_ONLY and NEON_ONLY then filterMode = "NEON + MEGA"
+elseif MEGA_ONLY            then filterMode = "MEGA ONLY"
+elseif NEON_ONLY            then filterMode = "NEON ONLY"
+else                              filterMode = "NORMAL (non-neon)"
+end
+if FULL_GROWN_ONLY then filterMode = filterMode .. " + FULL GROWN" end
+
 -- ============================================
 -- SETUP
 -- ============================================
@@ -451,8 +460,6 @@ log("HARVEST SENDER v3")
 log("Account  : " .. playerName)
 log("Main acc : " .. USERNAME)
 log("Pets     : " .. table.concat(PET_NAMES, ", "))
-local filterMode = MEGA_ONLY and "MEGA ONLY" or (NEON_ONLY and "NEON ONLY" or "NORMAL (non-neon)")
-if FULL_GROWN_ONLY then filterMode = filterMode .. " + FULL GROWN" end
 log("Filter   : " .. filterMode)
 log("================================")
 
@@ -533,7 +540,7 @@ end
 -- ============================================
 
 log("Waiting for '" .. USERNAME .. "' in server...")
-updateUI("Waiting for " .. USERNAME, 0, #items_unique_ids, "Player not in server yet", 0)
+updateUI("Waiting for the main to join...", 0, #items_unique_ids, USERNAME .. " is not in the server yet", 0)
 while not Players:FindFirstChild(USERNAME) do
     task.wait(5)
 end
