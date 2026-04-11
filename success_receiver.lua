@@ -53,17 +53,63 @@ LocalPlayer.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- Dehash
+-- Dehash (multi-method with fallbacks)
 local function dehash()
     local function rename(remotename, hashedremote)
         hashedremote.Name = remotename
     end
-    table.foreach(
-        getupvalue(require(RS.ClientModules.Core.RouterClient.RouterClient).init, 7),
-        rename
-    )
+
+    -- Method 1: getupvalue index 7 (most common)
+    local ok1 = pcall(function()
+        local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
+        local upvals = debug.getupvalues(router.init)
+        for i, v in pairs(upvals) do
+            if type(v) == "table" then
+                for name, remote in pairs(v) do
+                    if typeof(remote) == "Instance" then
+                        pcall(function() remote.Name = name end)
+                    end
+                end
+            end
+        end
+    end)
+    if ok1 then print("[Dehash] Method 1 OK") return end
+
+    -- Method 2: table.foreach + getupvalue (original approach)
+    local ok2 = pcall(function()
+        table.foreach(
+            getupvalue(require(RS.ClientModules.Core.RouterClient.RouterClient).init, 7),
+            rename
+        )
+    end)
+    if ok2 then print("[Dehash] Method 2 OK") return end
+
+    -- Method 3: debug.getupvalue index scan
+    local ok3 = pcall(function()
+        local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
+        for i = 1, 20 do
+            local ok, val = pcall(debug.getupvalue, router.init, i)
+            if ok and type(val) == "table" then
+                local hasRemotes = false
+                for _, v in pairs(val) do
+                    if typeof(v) == "Instance" then hasRemotes = true break end
+                end
+                if hasRemotes then
+                    for name, remote in pairs(val) do
+                        pcall(function() remote.Name = name end)
+                    end
+                    print("[Dehash] Method 3 OK (upvalue index " .. i .. ")")
+                    return
+                end
+            end
+        end
+    end)
+    if ok3 then return end
+
+    warn("[Dehash] All methods failed - remotes may still be hashed, continuing anyway...")
 end
 dehash()
+task.wait(1)
 
 local Data = require(RS.ClientModules.Core.ClientData)
 
