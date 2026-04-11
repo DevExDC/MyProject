@@ -44,12 +44,18 @@ if #PET_NAMES == 0 then error("No pet_names set in config!") end
 
 -- Build filter mode string early so UI can use it
 local filterMode
-if MEGA_ONLY and NEON_ONLY then filterMode = "NEON + MEGA"
-elseif MEGA_ONLY            then filterMode = "MEGA ONLY"
-elseif NEON_ONLY            then filterMode = "NEON ONLY"
-else                              filterMode = "NORMAL (non-neon)"
+if MEGA_ONLY and NEON_ONLY then
+    filterMode = "NEON + MEGA"
+elseif MEGA_ONLY then
+    filterMode = "MEGA ONLY"
+elseif NEON_ONLY then
+    filterMode = "NEON ONLY"
+else
+    filterMode = "NORMAL (non-neon)"
 end
-if FULL_GROWN_ONLY then filterMode = filterMode .. " + FULL GROWN" end
+if FULL_GROWN_ONLY then
+    filterMode = filterMode .. " + FULL GROWN"
+end
 
 -- ============================================
 -- SETUP
@@ -417,7 +423,6 @@ local function petPassesFilter(item)
     if FULL_GROWN_ONLY and pet_age ~= 6 then return false end
 
     if MEGA_ONLY and NEON_ONLY then
-        -- both true = accept neon AND mega
         return is_neon == true or is_mega == true
     elseif MEGA_ONLY then
         return is_mega == true
