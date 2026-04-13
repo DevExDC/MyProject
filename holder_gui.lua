@@ -16,12 +16,12 @@ repeat task.wait() until game:IsLoaded()
 repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
 task.wait(2)
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
-local holderName = LocalPlayer.Name
+local HttpService       = game:GetService("HttpService")
+local TweenService      = game:GetService("TweenService")
+local LocalPlayer       = Players.LocalPlayer
+local holderName        = LocalPlayer.Name
 
 -- ============== ANTI-AFK ==============
 local VirtualUser = game:GetService("VirtualUser")
@@ -31,16 +31,16 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
--- Dehash
--- DEHASH REMOTES
+-- ============================================
+-- DEHASH (fixed: uses ReplicatedStorage, auto-scans upvalues 1-30)
+-- ============================================
 local function dehash()
-    local router = require(game:GetService("ReplicatedStorage").ClientModules.Core.RouterClient.RouterClient)
+    local router = require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient)
     local fn = router.init
 
     for i = 1, 30 do
         local ok, val = pcall(debug.getupvalue, fn, i)
         if ok and type(val) == "table" then
-            -- Check if this table contains RemoteEvent/RemoteFunction instances
             local hasRemotes = false
             for _, v in pairs(val) do
                 if typeof(v) == "Instance" and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
@@ -62,16 +62,17 @@ local function dehash()
 end
 dehash()
 
+local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+
 -- State
-local isRunning = false
+local isRunning        = false
 local processedRequests = {}
-local currentQueue = {}
-local stats = {completed = 0, failed = 0, total = 0}
-local connectionStatus = "⚠️ Not tested"
+local currentQueue     = {}
+local stats            = {completed = 0, failed = 0, total = 0}
 
 -- Config
 local selectedRarity = "All"
-local neonEnabled = false
+local neonEnabled    = false
 
 -- ============================================
 -- MODERN CLEAN GUI
@@ -83,7 +84,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = game:GetService("CoreGui")
 
--- Main Frame (Responsive for all devices)
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 340, 0, 480)
 MainFrame.Position = UDim2.new(0.5, -170, 0.5, -240)
@@ -177,11 +178,11 @@ local function createCard(name, height, order)
     Card.BorderSizePixel = 0
     Card.LayoutOrder = order
     Card.Parent = ContentFrame
-    
+
     local CardCorner = Instance.new("UICorner")
     CardCorner.CornerRadius = UDim.new(0, 10)
     CardCorner.Parent = Card
-    
+
     return Card
 end
 
@@ -354,11 +355,11 @@ local function createStatBox(text, color)
     Box.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     Box.BorderSizePixel = 0
     Box.Parent = StatsContainer
-    
+
     local BoxCorner = Instance.new("UICorner")
     BoxCorner.CornerRadius = UDim.new(0, 6)
     BoxCorner.Parent = Box
-    
+
     local Label = Instance.new("TextLabel")
     Label.Size = UDim2.new(1, 0, 1, 0)
     Label.BackgroundTransparency = 1
@@ -367,13 +368,13 @@ local function createStatBox(text, color)
     Label.TextSize = 11
     Label.Font = Enum.Font.GothamMedium
     Label.Parent = Box
-    
+
     return Label
 end
 
 local CompletedLabel = createStatBox("✅ 0", Color3.fromRGB(120, 220, 120))
-local FailedLabel = createStatBox("❌ 0", Color3.fromRGB(255, 120, 120))
-local TotalLabel = createStatBox("📊 0", Color3.fromRGB(140, 200, 255))
+local FailedLabel    = createStatBox("❌ 0", Color3.fromRGB(255, 120, 120))
+local TotalLabel     = createStatBox("📊 0", Color3.fromRGB(140, 200, 255))
 
 -- 6. Start Button
 local StartButton = Instance.new("TextButton")
@@ -394,16 +395,16 @@ StartCorner.Parent = StartButton
 -- FUNCTIONS
 -- ============================================
 
--- Toggle animations
+-- Neon toggle
 NeonToggle.MouseButton1Click:Connect(function()
     neonEnabled = not neonEnabled
-    
+
     local targetColor = neonEnabled and Color3.fromRGB(88, 180, 90) or Color3.fromRGB(60, 60, 80)
-    local targetPos = neonEnabled and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
-    
-    TweenService:Create(NeonToggle, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundColor3 = targetColor}):Play()
-    TweenService:Create(ToggleCircle, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Position = targetPos}):Play()
-    
+    local targetPos   = neonEnabled and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+
+    TweenService:Create(NeonToggle,    TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundColor3 = targetColor}):Play()
+    TweenService:Create(ToggleCircle,  TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Position = targetPos}):Play()
+
     NeonLabel.Text = neonEnabled and "Neon Only ✓" or "Neon Only"
 end)
 
@@ -412,15 +413,15 @@ CloseButton.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- Rarity cycle (click rarity label to cycle)
+-- Rarity cycle
 local rarities = {"All", "Common", "Uncommon", "Rare", "Ultra Rare", "Legendary"}
 local rarityColors = {
-    All = Color3.fromRGB(140, 200, 255),
-    Common = Color3.fromRGB(180, 180, 180),
-    Uncommon = Color3.fromRGB(120, 220, 120),
-    Rare = Color3.fromRGB(100, 150, 255),
+    All           = Color3.fromRGB(140, 200, 255),
+    Common        = Color3.fromRGB(180, 180, 180),
+    Uncommon      = Color3.fromRGB(120, 220, 120),
+    Rare          = Color3.fromRGB(100, 150, 255),
     ["Ultra Rare"] = Color3.fromRGB(200, 100, 255),
-    Legendary = Color3.fromRGB(255, 200, 50)
+    Legendary     = Color3.fromRGB(255, 200, 50),
 }
 
 local rarityIndex = 1
@@ -433,12 +434,12 @@ RarityLabel.InputBegan:Connect(function(input)
     end
 end)
 
--- Update functions
+-- Update queue display
 local function updateQueue()
     for _, child in pairs(QueueScroll:GetChildren()) do
         if child:IsA("TextLabel") then child:Destroy() end
     end
-    
+
     for i, req in ipairs(currentQueue) do
         local QueueItem = Instance.new("TextLabel")
         QueueItem.Size = UDim2.new(1, 0, 0, 18)
@@ -450,26 +451,26 @@ local function updateQueue()
         QueueItem.TextXAlignment = Enum.TextXAlignment.Left
         QueueItem.Parent = QueueScroll
     end
-    
+
     QueueScroll.CanvasSize = UDim2.new(0, 0, 0, #currentQueue * 20)
     QueueLabel.Text = string.format("📋 Queue (%d)", #currentQueue)
 end
 
 local function updateStats()
     CompletedLabel.Text = "✅ " .. stats.completed
-    FailedLabel.Text = "❌ " .. stats.failed
-    TotalLabel.Text = "📊 " .. stats.total
+    FailedLabel.Text    = "❌ " .. stats.failed
+    TotalLabel.Text     = "📊 " .. stats.total
 end
 
 -- API functions
 local function testConnection()
     local success, result = pcall(function()
         return request({
-            Url = NGROK_URL .. "/requests",
+            Url    = NGROK_URL .. "/requests",
             Method = "GET"
         })
     end)
-    
+
     if success and result.StatusCode == 200 then
         StatusLabel.Text = "✅ Connected to server!"
         return true
@@ -483,10 +484,9 @@ local function get_pending_requests()
     local requests = {}
     pcall(function()
         local response = request({
-            Url = NGROK_URL .. "/requests",
+            Url    = NGROK_URL .. "/requests",
             Method = "GET"
         })
-        
         if response.StatusCode == 200 then
             requests = HttpService:JSONDecode(response.Body)
         end
@@ -497,65 +497,52 @@ end
 local function get_pets(count)
     local petKind = PetKindBox.Text
     local pets = {}
-    
+
     pcall(function()
         local playerData = Data.get_data()[holderName]
         if not playerData or not playerData.inventory or not playerData.inventory.pets then
             return
         end
-        
+
         for _, pet in pairs(playerData.inventory.pets) do
             local shouldInclude = true
-            
+
             if pet.kind ~= petKind then
                 shouldInclude = false
             end
-            
+
             if shouldInclude then
                 local is_neon = pet.properties and pet.properties.neon
                 local is_mega = pet.properties and pet.properties.mega_neon
                 local pet_age = pet.properties and pet.properties.age or 0
-                
-                -- ALWAYS skip age 6
+
                 if pet_age >= 6 then
                     shouldInclude = false
                 end
-                
-                -- Neon filter
+
                 if shouldInclude and neonEnabled then
-                    -- When neon toggle is ON: only neons, skip megas
-                    if is_mega then
-                        shouldInclude = false
-                    end
-                    if not is_neon then
-                        shouldInclude = false
-                    end
+                    if is_mega then shouldInclude = false end
+                    if not is_neon then shouldInclude = false end
                 elseif shouldInclude and not neonEnabled then
-                    -- When neon toggle is OFF: only normal pets, skip neons and megas
-                    if is_neon or is_mega then
-                        shouldInclude = false
-                    end
+                    if is_neon or is_mega then shouldInclude = false end
                 end
-                
-                -- Rarity filter
+
                 if shouldInclude and selectedRarity ~= "All" then
-                    local petRarity = pet.rarity or "common"
+                    local petRarity    = pet.rarity or "common"
                     local filterRarity = selectedRarity:lower():gsub(" ", "_")
                     if filterRarity ~= petRarity:lower() then
                         shouldInclude = false
                     end
                 end
             end
-            
+
             if shouldInclude then
                 table.insert(pets, pet.unique)
-                if #pets >= count then
-                    break
-                end
+                if #pets >= count then break end
             end
         end
     end)
-    
+
     return pets
 end
 
@@ -581,34 +568,34 @@ end
 local function mark_complete(username)
     pcall(function()
         request({
-            Url = NGROK_URL .. "/complete",
-            Method = "POST",
+            Url     = NGROK_URL .. "/complete",
+            Method  = "POST",
             Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode({username = username})
+            Body    = HttpService:JSONEncode({username = username})
         })
     end)
 end
 
 local function trade_to_receiver(username, total_pets_needed)
     StatusLabel.Text = string.format("🔄 Trading to %s (%d pets)...", username, total_pets_needed)
-    
-    local BATCH_SIZE = 18
+
+    local BATCH_SIZE  = 18
     local pets_traded = 0
     local trade_number = 1
-    
+
     while pets_traded < total_pets_needed do
-        local remaining = total_pets_needed - pets_traded
+        local remaining  = total_pets_needed - pets_traded
         local this_batch = math.min(remaining, BATCH_SIZE)
-        
+
         local target = Players:FindFirstChild(username)
         if not target then
             StatusLabel.Text = "❌ " .. username .. " left!"
             if pets_traded > 0 then mark_complete(username) end
             return false
         end
-        
+
         local pets = get_pets(this_batch)
-        
+
         if #pets < this_batch then
             if #pets > 0 then
                 this_batch = #pets
@@ -618,122 +605,122 @@ local function trade_to_receiver(username, total_pets_needed)
                 return false
             end
         end
-        
+
         StatusLabel.Text = string.format("📤 Trade #%d to %s...", trade_number, username)
-        
+
         if not send_trade(username) then
             task.wait(2)
             continue
         end
-        
+
         task.wait(2)
-        
+
         local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
-        local timeout = 0
+        local timeout  = 0
         while not tradeGui.Visible and timeout < 10 do
             task.wait(0.5)
             timeout = timeout + 0.5
         end
-        
+
         if timeout >= 10 then
             task.wait(2)
             continue
         end
-        
+
         for i, petUnique in ipairs(pets) do
             add_pet(petUnique)
             StatusLabel.Text = string.format("📦 Adding... (%d/%d)", i, #pets)
             task.wait(0.2)
         end
-        
+
         StatusLabel.Text = "⏳ Waiting for countdown..."
         task.wait(6)
         accept_trade()
         task.wait(0.5)
         confirm_trade()
-        
+
         timeout = 0
         repeat
             task.wait(0.5)
             timeout = timeout + 0.5
         until not tradeGui.Visible or timeout > 20
-        
+
         if timeout > 20 then
             task.wait(2)
             continue
         end
-        
-        pets_traded = pets_traded + this_batch
+
+        pets_traded  = pets_traded + this_batch
         trade_number = trade_number + 1
-        
+
         StatusLabel.Text = string.format("✅ %d/%d pets traded", pets_traded, total_pets_needed)
-        
+
         if pets_traded < total_pets_needed then
             task.wait(2)
         end
     end
-    
+
     mark_complete(username)
     return pets_traded >= total_pets_needed
 end
 
--- Main Loop
+-- Main loop
 local function mainLoop()
     while isRunning do
         StatusLabel.Text = "📡 Checking..."
-        
+
         local requests = get_pending_requests()
         currentQueue = {}
-        
-        for _, request in ipairs(requests) do
-            local username = request.username
-            local pets_needed = tonumber(request.pets_needed) or 0
-            
+
+        for _, req in ipairs(requests) do
+            local username   = req.username
+            local pets_needed = tonumber(req.pets_needed) or 0
+
             if not processedRequests[username] and pets_needed > 0 then
-                table.insert(currentQueue, request)
+                table.insert(currentQueue, req)
             end
         end
-        
+
         updateQueue()
-        
+
         if #currentQueue == 0 then
             StatusLabel.Text = "⏳ Waiting for requests..."
             task.wait(10)
         else
-            local request = currentQueue[1]
+            local req = currentQueue[1]
             stats.total = stats.total + 1
-            
-            local success = trade_to_receiver(request.username, request.pets_needed)
-            
+
+            local success = trade_to_receiver(req.username, req.pets_needed)
+
             if success then
                 stats.completed = stats.completed + 1
-                processedRequests[request.username] = true
+                processedRequests[req.username] = true
             else
                 stats.failed = stats.failed + 1
-                processedRequests[request.username] = true
+                processedRequests[req.username] = true
             end
-            
+
             updateStats()
             task.wait(2)
         end
     end
 end
 
--- Start Button
+-- Start button
 StartButton.MouseButton1Click:Connect(function()
     if PetKindBox.Text == "" then
         StatusLabel.Text = "❌ Enter Pet Remote ID!"
         return
     end
-    
+
     isRunning = not isRunning
-    
+
     if isRunning then
         if not testConnection() then
             isRunning = false
             return
         end
-        
+
         StartButton.Text = "⏸️  STOP"
         StartButton.BackgroundColor3 = Color3.fromRGB(235, 64, 52)
         task.spawn(mainLoop)
@@ -744,20 +731,23 @@ StartButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Make draggable
+-- Draggable
 local dragging, dragInput, dragStart, startPos
 
 local function update(input)
     local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    MainFrame.Position = UDim2.new(
+        startPos.X.Scale, startPos.X.Offset + delta.X,
+        startPos.Y.Scale, startPos.Y.Offset + delta.Y
+    )
 end
 
 Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
+        dragging  = true
         dragStart = input.Position
-        startPos = MainFrame.Position
-        
+        startPos  = MainFrame.Position
+
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then
                 dragging = false
