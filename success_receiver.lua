@@ -51,7 +51,7 @@ elseif MEGA_ONLY then
 elseif NEON_ONLY then
     filterMode = "NEON ONLY"
 else
-    filterMode = "NORMAL (non-neon)"
+    filterMode = "ALL PETS"
 end
 if FULL_GROWN_ONLY then
     filterMode = filterMode .. " + FULL GROWN"
@@ -429,7 +429,7 @@ local function petPassesFilter(item)
     elseif NEON_ONLY then
         return is_neon == true and not is_mega
     else
-        return not is_neon and not is_mega
+        return true -- both false = trade everything (normal, neon, mega)
     end
 end
 
