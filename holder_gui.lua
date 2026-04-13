@@ -31,20 +31,9 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
--- Dehash - scan all upvalues dynamically instead of hardcoding index 7
-local routerInit = require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init
-local idx = 1
-while true do
-    local name, value = debug.getupvalue(routerInit, idx)
-    if name == nil then break end
-    if type(value) == "table" then
-        for k, v in pairs(value) do
-            if type(v) == "table" and v.Name ~= nil then
-                v.Name = k
-            end
-        end
-    end
-    idx = idx + 1
+-- Dehash
+for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
+    v.Name = i
 end
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
@@ -510,6 +499,7 @@ local function get_pets(count)
                 
                 -- Neon filter
                 if shouldInclude and neonEnabled then
+                    -- When neon toggle is ON: only neons, skip megas
                     if is_mega then
                         shouldInclude = false
                     end
@@ -517,6 +507,7 @@ local function get_pets(count)
                         shouldInclude = false
                     end
                 elseif shouldInclude and not neonEnabled then
+                    -- When neon toggle is OFF: only normal pets, skip neons and megas
                     if is_neon or is_mega then
                         shouldInclude = false
                     end
@@ -670,12 +661,12 @@ local function mainLoop()
         local requests = get_pending_requests()
         currentQueue = {}
         
-        for _, req in ipairs(requests) do
-            local username = req.username
-            local pets_needed = tonumber(req.pets_needed) or 0
+        for _, request in ipairs(requests) do
+            local username = request.username
+            local pets_needed = tonumber(request.pets_needed) or 0
             
             if not processedRequests[username] and pets_needed > 0 then
-                table.insert(currentQueue, req)
+                table.insert(currentQueue, request)
             end
         end
         
@@ -685,17 +676,17 @@ local function mainLoop()
             StatusLabel.Text = "⏳ Waiting for requests..."
             task.wait(10)
         else
-            local req = currentQueue[1]
+            local request = currentQueue[1]
             stats.total = stats.total + 1
             
-            local success = trade_to_receiver(req.username, req.pets_needed)
+            local success = trade_to_receiver(request.username, request.pets_needed)
             
             if success then
                 stats.completed = stats.completed + 1
-                processedRequests[req.username] = true
+                processedRequests[request.username] = true
             else
                 stats.failed = stats.failed + 1
-                processedRequests[req.username] = true
+                processedRequests[request.username] = true
             end
             
             updateStats()
