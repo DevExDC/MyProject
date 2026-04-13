@@ -5,10 +5,10 @@
 
 if not getgenv().ReceiverConfig then
     getgenv().ReceiverConfig = {
-        PC_SERVER_URL = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
-        WEBHOOK_URL = "",
-        RARITY = "legendary",
-        PET_KIND = "winter_2025_christmas_spirit",
+        PC_SERVER_URL    = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
+        WEBHOOK_URL      = "",
+        RARITY           = "legendary",
+        PET_KIND         = "winter_2025_christmas_spirit",
         FARMSYNC_API_KEY = ""
     }
 end
@@ -28,11 +28,11 @@ if not CONFIG.PET_KIND or CONFIG.PET_KIND == "" then
 end
 
 local RARITY_AGE_UPS = {
-    legendary = 7,
+    legendary  = 7,
     ultra_rare = 4,
-    rare = 2,
-    uncommon = 2,
-    common = 1
+    rare       = 2,
+    uncommon   = 2,
+    common     = 1,
 }
 
 local rarity_lower = string.lower(CONFIG.RARITY)
@@ -49,11 +49,11 @@ repeat task.wait() until game:IsLoaded()
 repeat task.wait(1) until game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
 task.wait(2)
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local LocalPlayer = Players.LocalPlayer
-local playerName = LocalPlayer.Name
+local HttpService       = game:GetService("HttpService")
+local LocalPlayer       = Players.LocalPlayer
+local playerName        = LocalPlayer.Name
 
 -- ============== ANTI-AFK ==============
 local VirtualUser = game:GetService("VirtualUser")
@@ -63,11 +63,37 @@ LocalPlayer.Idled:Connect(function()
 end)
 print("✅ Anti-AFK enabled")
 
--- ============== DEHASH ==============
+-- ============================================
+-- DEHASH (fixed: auto-scans upvalues 1-30)
+-- ============================================
 print("🔧 Dehashing remotes...")
-for i, v in pairs(debug.getupvalue(require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient).init, 7)) do
-    v.Name = i
+local function dehash()
+    local router = require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient)
+    local fn = router.init
+
+    for i = 1, 30 do
+        local ok, val = pcall(debug.getupvalue, fn, i)
+        if ok and type(val) == "table" then
+            local hasRemotes = false
+            for _, v in pairs(val) do
+                if typeof(v) == "Instance" and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+                    hasRemotes = true
+                    break
+                end
+            end
+            if hasRemotes then
+                for name, remote in pairs(val) do
+                    pcall(function() remote.Name = name end)
+                end
+                print("[Dehash] Success at upvalue index " .. i)
+                return
+            end
+        end
+    end
+
+    warn("[Dehash] Failed — no remote table found in upvalues")
 end
+dehash()
 print("✅ Remotes dehashed!")
 
 -- ============== NO SPAWNING! ==============
@@ -83,10 +109,10 @@ local function sendWebhook(message)
     if CONFIG.WEBHOOK_URL == "" then return end
     pcall(function()
         request({
-            Url = CONFIG.WEBHOOK_URL,
-            Method = "POST",
+            Url     = CONFIG.WEBHOOK_URL,
+            Method  = "POST",
             Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode({["content"] = message})
+            Body    = HttpService:JSONEncode({["content"] = message})
         })
     end)
 end
@@ -94,24 +120,24 @@ end
 local function post_to_pc_server(potions, pets_needed)
     pcall(function()
         local data = {
-            username = playerName,
-            potions = potions,
+            username   = playerName,
+            potions    = potions,
             pets_needed = pets_needed,
-            rarity = CONFIG.RARITY
+            rarity     = CONFIG.RARITY,
         }
-        
+
         print("\n📡 Sending request to PC server...")
         print("  URL: " .. CONFIG.PC_SERVER_URL)
         print("  Username: " .. playerName)
         print("  Pets needed: " .. pets_needed)
-        
+
         local response = request({
-            Url = CONFIG.PC_SERVER_URL,
-            Method = "POST",
+            Url     = CONFIG.PC_SERVER_URL,
+            Method  = "POST",
             Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
+            Body    = HttpService:JSONEncode(data)
         })
-        
+
         if response.StatusCode == 200 then
             print("✅ Request sent to PC successfully!")
         else
@@ -124,11 +150,11 @@ local function disableAccount()
     if CONFIG.FARMSYNC_API_KEY == "" then return end
     pcall(function()
         request({
-            Url = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
-            Method = "PUT",
+            Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
+            Method  = "PUT",
             Headers = {
                 ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
-                ["Content-Type"] = "application/json"
+                ["Content-Type"]  = "application/json",
             },
             Body = HttpService:JSONEncode({enabled = false})
         })
@@ -179,34 +205,31 @@ end
 
 local function setup_auto_accept(expected_pets)
     pcall(function()
-        local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
+        local tradeGui  = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
         local dialogApp = LocalPlayer.PlayerGui:WaitForChild("DialogApp")
         local initialPets = count_pets()
         local webhookSent = false
-        
+
         print("\n✅ Auto-accept system ready (no spawn mode)")
-        
-        -- Phase 1: Auto-accept EVERY trade request (NO FLAGS - CONTINUOUS)
+
+        -- Phase 1: Continuous dialog acceptor
         task.spawn(function()
             print("✅ Phase 1: Continuous dialog acceptor started")
             while task.wait(0.3) do
                 pcall(function()
-                    -- NO EARLY RETURN - Always accept trades
-                    
-                    -- Check for dialog EVERY loop
-                    local dialogVisible = dialogApp and dialogApp:FindFirstChild("Dialog") and dialogApp.Dialog.Visible
-                    
+                    local dialogVisible = dialogApp
+                        and dialogApp:FindFirstChild("Dialog")
+                        and dialogApp.Dialog.Visible
+
                     if dialogVisible then
                         print("\n📨 Trade request detected!")
-                        
-                        -- Accept from ALL players
                         for _, player in pairs(Players:GetPlayers()) do
                             if player ~= LocalPlayer then
-                                local success = pcall(function()
+                                local ok = pcall(function()
                                     local args = {player, true}
                                     ReplicatedStorage:WaitForChild("API"):WaitForChild("TradeAPI/AcceptOrDeclineTradeRequest"):InvokeServer(unpack(args))
                                 end)
-                                if success then
+                                if ok then
                                     print("   ✅ Accepted from: " .. player.Name)
                                 end
                                 task.wait(0.2)
@@ -216,7 +239,7 @@ local function setup_auto_accept(expected_pets)
                 end)
             end
         end)
-        
+
         -- Phase 2: Auto-accept negotiation
         task.spawn(function()
             while task.wait(0.1) do
@@ -227,7 +250,7 @@ local function setup_auto_accept(expected_pets)
                 end)
             end
         end)
-        
+
         -- Phase 3: Auto-confirm trade
         task.spawn(function()
             while task.wait(0.1) do
@@ -238,39 +261,36 @@ local function setup_auto_accept(expected_pets)
                 end)
             end
         end)
-        
+
         -- Monitor trades
         task.spawn(function()
-            local was_visible = false
-            local last_pet_count = initialPets
-            local no_change_time = 0
-            local MAX_WAIT_TIME = 5400
+            local was_visible     = false
+            local last_pet_count  = initialPets
+            local no_change_time  = 0
+            local MAX_WAIT_TIME   = 5400
             local last_status_check = 0
-            
+
             while task.wait(0.5) do
                 pcall(function()
                     local current = count_pets()
-                    
-                    -- ============================================
-                    -- SMART SERVER STATUS CHECK (every 10 seconds)
-                    -- ============================================
+
+                    -- Smart server status check (every 10 seconds)
                     last_status_check = last_status_check + 0.5
                     if last_status_check >= 10 then
                         last_status_check = 0
-                        
-                        local check_success, check_result = pcall(function()
+
+                        local check_ok, check_result = pcall(function()
                             local response = request({
-                                Url = CONFIG.PC_SERVER_URL:gsub("/request", "/check_status/" .. playerName),
+                                Url    = CONFIG.PC_SERVER_URL:gsub("/request", "/check_status/" .. playerName),
                                 Method = "GET"
                             })
-                            
+
                             if response.StatusCode == 200 then
                                 local status_data = HttpService:JSONDecode(response.Body)
-                                
-                                -- Check if holder reported "insufficient_pets"
+
                                 if status_data.message == "insufficient_pets" and not webhookSent then
                                     local received = current - initialPets
-                                    
+
                                     print("\n" .. ("="):rep(50))
                                     print("📨 SERVER STATUS: Holder out of pets!")
                                     print(("="):rep(50))
@@ -278,10 +298,10 @@ local function setup_auto_accept(expected_pets)
                                     print(string.format("   Expected: %d pets", expected_pets))
                                     print(string.format("   Actually received: %d pets", received))
                                     print(("="):rep(50))
-                                    
-                                    sendWebhook(string.format("📨 %s - Holder out of pets - Got %d/%d pets", 
+
+                                    sendWebhook(string.format("📨 %s - Holder out of pets - Got %d/%d pets",
                                         playerName, received, expected_pets))
-                                    
+
                                     print("\n🔴 Auto-disabling account...")
                                     disableAccount()
                                     webhookSent = true
@@ -290,12 +310,12 @@ local function setup_auto_accept(expected_pets)
                             end
                             return false
                         end)
-                        
-                        if check_success and check_result then
-                            return -- Exit monitor loop
+
+                        if check_ok and check_result then
+                            return
                         end
                     end
-                    
+
                     -- Check for new pets
                     if current > last_pet_count then
                         last_pet_count = current
@@ -303,19 +323,17 @@ local function setup_auto_accept(expected_pets)
                         print(string.format("📦 Received pets! Total: %d/%d", current - initialPets, expected_pets))
                     else
                         no_change_time = no_change_time + 0.5
-                        
+
                         if no_change_time >= MAX_WAIT_TIME and not webhookSent then
                             local received = current - initialPets
                             print(string.format("⏱️ TIMEOUT: %d/%d pets", received, expected_pets))
-                            
                             sendWebhook(string.format("⏱️ %s - TIMEOUT - %d/%d pets", playerName, received, expected_pets))
-                            
                             disableAccount()
                             webhookSent = true
                             return
                         end
                     end
-                    
+
                     -- Trade window monitoring
                     if tradeGui.Visible then
                         if not was_visible then
@@ -324,21 +342,19 @@ local function setup_auto_accept(expected_pets)
                         end
                     elseif was_visible then
                         was_visible = false
-                        
                         current = count_pets()
                         local received = current - initialPets
-                        
+
                         print(string.format("📦 Trade closed! Progress: %d/%d", received, expected_pets))
-                        
+
                         if received >= expected_pets and not webhookSent then
                             print("\n" .. ("="):rep(50))
                             print("✅ ALL PETS RECEIVED!")
                             print(("="):rep(50))
                             print(string.format("   Received: %d/%d pets", received, expected_pets))
                             print(("="):rep(50))
-                            
+
                             sendWebhook(string.format("✅ %s - COMPLETE - %d pets!", playerName, expected_pets))
-                            
                             disableAccount()
                             webhookSent = true
                         elseif received < expected_pets then
@@ -355,41 +371,41 @@ print("\n🔍 Analyzing inventory (without spawning)...")
 
 pcall(function()
     local potions = count_age_potions()
-    
+
     if potions == 0 then
         print("❌ No potions")
         disableAccount()
         return
     end
-    
-    local age_ups = RARITY_AGE_UPS[rarity_lower]
+
+    local age_ups          = RARITY_AGE_UPS[rarity_lower]
     local total_pets_needed = math.floor(potions / age_ups)
-    
+
     if total_pets_needed == 0 then
         print("❌ Not enough potions")
         disableAccount()
         return
     end
-    
-    local existing_pets = count_specific_pets(CONFIG.PET_KIND)
+
+    local existing_pets  = count_specific_pets(CONFIG.PET_KIND)
     local pets_to_request = total_pets_needed - existing_pets
-    
+
     print("\n📊 Calculation:")
     print("   Potions: " .. potions)
     print("   Total needed: " .. total_pets_needed)
     print("   Already have: " .. existing_pets)
     print("   Will request: " .. pets_to_request)
-    
+
     if pets_to_request <= 0 then
         print("\n✅ Already have enough pets!")
         sendWebhook(string.format("✅ %s - Already has %d/%d pets", playerName, existing_pets, total_pets_needed))
         disableAccount()
         return
     end
-    
+
     setup_auto_accept(pets_to_request)
     post_to_pc_server(potions, pets_to_request)
-    
+
     print("\n✅ Waiting for " .. pets_to_request .. " pets")
     print("💡 Server status checking enabled")
     print("   Will auto-disable if holder runs out of pets")
