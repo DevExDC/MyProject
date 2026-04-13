@@ -32,19 +32,15 @@ end)
 print("✅ Anti-AFK enabled")
 
 -- Dehash
+-- DEHASH REMOTES
 local function dehash()
-    local RouterClient = require(
-        RS:WaitForChild("ClientModules")
-          :WaitForChild("Core")
-          :WaitForChild("RouterClient")
-          :WaitForChild("RouterClient")
-    )
-
-    local fn = RouterClient.init
+    local router = require(game:GetService("ReplicatedStorage").ClientModules.Core.RouterClient.RouterClient)
+    local fn = router.init
 
     for i = 1, 30 do
         local ok, val = pcall(debug.getupvalue, fn, i)
         if ok and type(val) == "table" then
+            -- Check if this table contains RemoteEvent/RemoteFunction instances
             local hasRemotes = false
             for _, v in pairs(val) do
                 if typeof(v) == "Instance" and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
@@ -62,13 +58,9 @@ local function dehash()
         end
     end
 
-    warn("[Dehash] Failed — no remote table found")
+    warn("[Dehash] Failed — no remote table found in upvalues")
 end
-local Data = require(
-    RS:WaitForChild("ClientModules")
-      :WaitForChild("Core")
-      :WaitForChild("ClientData")
-)
+dehash()
 
 -- State
 local isRunning = false
