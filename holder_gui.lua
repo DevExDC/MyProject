@@ -33,8 +33,14 @@ print("✅ Anti-AFK enabled")
 
 -- Dehash
 local function dehash()
-    local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
-    local fn = router.init
+    local RouterClient = require(
+        RS:WaitForChild("ClientModules")
+          :WaitForChild("Core")
+          :WaitForChild("RouterClient")
+          :WaitForChild("RouterClient")
+    )
+
+    local fn = RouterClient.init
 
     for i = 1, 30 do
         local ok, val = pcall(debug.getupvalue, fn, i)
@@ -56,12 +62,13 @@ local function dehash()
         end
     end
 
-    warn("[Dehash] Failed — no remote table found in upvalues")
+    warn("[Dehash] Failed — no remote table found")
 end
-
-dehash()
-task.wait(1)
-local Data         = require(RS.ClientModules.Core.ClientData)
+local Data = require(
+    RS:WaitForChild("ClientModules")
+      :WaitForChild("Core")
+      :WaitForChild("ClientData")
+)
 
 -- State
 local isRunning = false
