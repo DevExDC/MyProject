@@ -61,6 +61,7 @@ end
 
 dehash()
 task.wait(1)
+local Data         = require(RS.ClientModules.Core.ClientData)
 
 -- State
 local isRunning = false
