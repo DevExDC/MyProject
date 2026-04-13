@@ -77,7 +77,6 @@ local function disable_farmsync_account()
     if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
         print("✅ FarmSync account disabled successfully! (Status: " .. response.StatusCode .. ")")
         
-        -- Send webhook if available
         if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
             pcall(function()
                 request({
@@ -116,7 +115,6 @@ local function findAndSelectPet()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local playerName = LocalPlayer.Name
     
-    -- resolveItem function
     local function resolveItem(input)
         local db = require(ReplicatedStorage
             :WaitForChild("ClientDB")
@@ -141,7 +139,6 @@ local function findAndSelectPet()
         return nil
     end
     
-    -- Count pets of specific kind
     local function countPets(petKind)
         local count = 0
         pcall(function()
@@ -158,12 +155,10 @@ local function findAndSelectPet()
         return count
     end
     
-    -- Check if using multi-pet mode
     if CONFIG.PET_NAMES and #CONFIG.PET_NAMES > 0 then
         print("🔍 Multi-Pet Mode: Searching for available pets...")
         print("=" .. string.rep("=", 50))
         
-        -- Try each pet name in order
         for i, petName in ipairs(CONFIG.PET_NAMES) do
             print(string.format("\n[%d/%d] Checking: %s", i, #CONFIG.PET_NAMES, petName))
             
@@ -178,8 +173,6 @@ local function findAndSelectPet()
                 if count > 0 then
                     print(string.format("  🎯 SELECTED: %s", petName))
                     print("=" .. string.rep("=", 50))
-                    
-                    -- Set this as THE pet to age
                     CONFIG.PET_NAME = petName
                     return true
                 else
@@ -190,7 +183,6 @@ local function findAndSelectPet()
             end
         end
         
-        -- None found
         print("\n❌ ERROR: None of the pet types found in your inventory!")
         print("\nPets searched:")
         for i, name in ipairs(CONFIG.PET_NAMES) do
@@ -199,7 +191,6 @@ local function findAndSelectPet()
         error("No pets available from the list!")
         
     elseif CONFIG.PET_NAME and CONFIG.PET_NAME ~= "" then
-        -- Single pet mode (old way)
         print("🐾 Single-Pet Mode: " .. CONFIG.PET_NAME)
         return true
     else
@@ -207,7 +198,6 @@ local function findAndSelectPet()
     end
 end
 
--- Run pet selection
 findAndSelectPet()
 
 if not CONFIG.PET_NAME or CONFIG.PET_NAME == "" then
@@ -215,7 +205,7 @@ if not CONFIG.PET_NAME or CONFIG.PET_NAME == "" then
 end
 
 -- ============================================
--- WAIT FOR GAME READY (Friend's logic)
+-- WAIT FOR GAME READY
 -- ============================================
 repeat task.wait(1) until game:IsLoaded()
     and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
@@ -251,7 +241,6 @@ local function resolveItem(input)
     local nameMatch = nil
 
     for _, v in pairs(db) do
-        -- priority: kind match
         if v.kind and v.kind:lower() == search then
             print(
                 "✨ Found with KIND",
@@ -262,7 +251,6 @@ local function resolveItem(input)
             )
             return v.kind, v, "kind"
         end
-        -- fallback: name match
         if not nameMatch and v.name and v.name:lower() == search then
             nameMatch = v
         end
@@ -294,7 +282,6 @@ if not resolved_kind then
 end
 
 CONFIG.PET_KIND = resolved_kind
--- normalize rarity from DB (e.g. "Ultra Rare" → "ultra_rare")
 CONFIG.RARITY = (resolved_data.rarity or ""):lower():gsub("%s+", "_")
 
 print("✅ Resolved → Kind: " .. CONFIG.PET_KIND .. " | Rarity: " .. CONFIG.RARITY)
@@ -316,7 +303,7 @@ if not potions_per_pet then
 end
 
 -- ============================================
--- ANTI-AFK (No movement version)
+-- ANTI-AFK
 -- ============================================
 LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
@@ -325,22 +312,45 @@ end)
 print("✅ Anti-AFK enabled")
 
 -- ============================================
--- REMOTE DEHASH
+-- REMOTE DEHASH (FIXED - scans all upvalues)
 -- ============================================
 print("🔧 Dehashing remotes...")
 local RouterClient = require(ReplicatedStorage.ClientModules.Core:WaitForChild("RouterClient"):WaitForChild("RouterClient"))
-for i, v in pairs(debug.getupvalue(RouterClient.init, 7)) do
-    v.Name = i
+
+local function dehash()
+    local fn = RouterClient.init
+    for i = 1, 30 do
+        local ok, val = pcall(debug.getupvalue, fn, i)
+        if ok and type(val) == "table" then
+            local hasRemotes = false
+            for _, v in pairs(val) do
+                if typeof(v) == "Instance" and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+                    hasRemotes = true
+                    break
+                end
+            end
+            if hasRemotes then
+                for name, remote in pairs(val) do
+                    pcall(function() remote.Name = name end)
+                end
+                print("[Dehash] Success at upvalue index " .. i)
+                return
+            end
+        end
+    end
+    warn("[Dehash] Failed — no remote table found in upvalues")
 end
+
+dehash()
 print("✅ Remotes dehashed!")
 
 -- ============================================
--- DISABLE USELESS UI (Friend's approach)
+-- DISABLE USELESS UI
 -- ============================================
 LocalPlayer.PlayerGui.DialogApp.Enabled = false
 
 -- ============================================
--- ENTER THE GAME (Friend's logic)
+-- ENTER THE GAME
 -- ============================================
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 
@@ -367,7 +377,6 @@ end
 
 enter_the_game()
 
--- wait for character to fully load (friend's check)
 repeat task.wait() until LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 print("✅ Character loaded!")
 
@@ -505,7 +514,6 @@ local function analyze_pet_inventory()
                 local is_mega = pet.properties and pet.properties.mega_neon or false
                 local age = pet.properties and pet.properties.age or 0
 
-                -- skip megas, they're already done
                 if is_mega then continue end
 
                 if is_neon then
@@ -698,10 +706,7 @@ local function run_aging()
     if total_pets == 0 then
         print("\n❌ NO PETS OF TYPE: " .. CONFIG.PET_KIND)
         sendWebhook(string.format("❌ %s - No %s pets found, kicking.", playerName, CONFIG.PET_KIND))
-        
-        -- Disable FarmSync before kicking
         disable_farmsync_account()
-        
         task.wait(3)
         LocalPlayer:Kick("No pets found — done!")
         return
@@ -712,10 +717,7 @@ local function run_aging()
     if total_potions == 0 then
         print("\n❌ NO AGE POTIONS")
         sendWebhook(string.format("❌ %s - No potions, kicking.", playerName))
-        
-        -- Disable FarmSync before kicking
         disable_farmsync_account()
-        
         task.wait(3)
         LocalPlayer:Kick("No potions — done!")
         return
@@ -747,10 +749,6 @@ local function run_aging()
         print(string.format("   Neon   (fg / age6): %d", analysis.full_grown_neons))
 
         local did_something = false
-
-        -- ============================================
-        -- PHASE 1: AGE ONE PET
-        -- ============================================
         local aged_this_cycle = false
 
         if #analysis.normal_pets > 0 and potions >= potions_per_pet then
@@ -812,9 +810,6 @@ local function run_aging()
             task.wait(2)
         end
 
-        -- ============================================
-        -- PHASE 2: FUSE
-        -- ============================================
         analysis = analyze_pet_inventory()
 
         if analysis.full_grown_normal >= 4 then
@@ -845,9 +840,6 @@ local function run_aging()
             end
         end
 
-        -- ============================================
-        -- NOTHING LEFT TO DO
-        -- ============================================
         if not did_something then
             local final_potions  = count_age_potions()
             local final_analysis = analyze_pet_inventory()
@@ -868,9 +860,6 @@ local function run_aging()
         end
     end
 
-    -- ============================================
-    -- FINAL SUMMARY + FARMSYNC DISABLE + KICK
-    -- ============================================
     local final_potions = count_age_potions()
 
     print("\n" .. ("="):rep(50))
@@ -886,7 +875,6 @@ local function run_aging()
     sendWebhook(string.format("✅ %s - COMPLETE\nAged: %d | Failed: %d | Neons: %d | Megas: %d\nRemaining potions: %d",
         playerName, total_aged, total_failed, total_neons, total_megas, final_potions))
 
-    -- Disable FarmSync account BEFORE kicking
     disable_farmsync_account()
 
     print("\n🔴 Aging done — kicking in 5s...")
