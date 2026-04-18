@@ -81,7 +81,6 @@ local function disable_farmsync_account()
     if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
         print("✅ FarmSync account disabled successfully! (Status: " .. response.StatusCode .. ")")
         
-        -- Send webhook if available
         if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
             pcall(function()
                 request({
@@ -120,7 +119,6 @@ local function findAndSelectPet()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local playerName = LocalPlayer.Name
     
-    -- resolveItem function
     local function resolveItem(input)
         local db = require(ReplicatedStorage
             :WaitForChild("ClientDB")
@@ -145,7 +143,6 @@ local function findAndSelectPet()
         return nil
     end
     
-    -- Count pets of specific kind
     local function countPets(petKind)
         local count = 0
         pcall(function()
@@ -162,12 +159,10 @@ local function findAndSelectPet()
         return count
     end
     
-    -- Check if using multi-pet mode
     if CONFIG.PET_NAMES and #CONFIG.PET_NAMES > 0 then
         print("🔍 Multi-Pet Mode: Searching for available pets...")
         print("=" .. string.rep("=", 50))
         
-        -- Try each pet name in order
         for i, petName in ipairs(CONFIG.PET_NAMES) do
             print(string.format("\n[%d/%d] Checking: %s", i, #CONFIG.PET_NAMES, petName))
             
@@ -182,8 +177,6 @@ local function findAndSelectPet()
                 if count > 0 then
                     print(string.format("  🎯 SELECTED: %s", petName))
                     print("=" .. string.rep("=", 50))
-                    
-                    -- Set this as THE pet to age
                     CONFIG.PET_NAME = petName
                     return true
                 else
@@ -194,14 +187,12 @@ local function findAndSelectPet()
             end
         end
         
-        -- None found - Disable FarmSync and exit gracefully
         print("\n❌ ERROR: None of the pet types found in your inventory!")
         print("\nPets searched:")
         for i, name in ipairs(CONFIG.PET_NAMES) do
             print(string.format("  %d. %s", i, name))
         end
         
-        -- Auto-disable FarmSync before exiting
         if CONFIG.FARMSYNC_AUTO_DISABLE then
             print("\n🔴 Auto-disabling FarmSync account...")
             disable_farmsync_account()
@@ -209,7 +200,6 @@ local function findAndSelectPet()
         
         print("\n❌ Exiting script - No pets available")
         
-        -- Kick player
         if CONFIG.AUTO_KICK ~= false then
             task.wait(3)
             game.Players.LocalPlayer:Kick("❌ No pets available from the list!")
@@ -218,7 +208,6 @@ local function findAndSelectPet()
         return false
         
     elseif CONFIG.PET_NAME and CONFIG.PET_NAME ~= "" then
-        -- Single pet mode (old way)
         print("🐾 Single-Pet Mode: " .. CONFIG.PET_NAME)
         return true
     else
@@ -226,10 +215,8 @@ local function findAndSelectPet()
     end
 end
 
--- Run pet selection
 local pet_selection_success = findAndSelectPet()
 
--- Exit gracefully if no pets found
 if not pet_selection_success then
     print("✅ Script terminated gracefully")
     return
@@ -240,7 +227,7 @@ if not CONFIG.PET_NAME or CONFIG.PET_NAME == "" then
 end
 
 -- ============================================
--- WAIT FOR GAME READY (Friend's logic)
+-- WAIT FOR GAME READY
 -- ============================================
 repeat task.wait(1) until game:IsLoaded()
     and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
@@ -276,7 +263,6 @@ local function resolveItem(input)
     local nameMatch = nil
 
     for _, v in pairs(db) do
-        -- priority: kind match
         if v.kind and v.kind:lower() == search then
             print(
                 "✨ Found with KIND",
@@ -287,7 +273,6 @@ local function resolveItem(input)
             )
             return v.kind, v, "kind"
         end
-        -- fallback: name match
         if not nameMatch and v.name and v.name:lower() == search then
             nameMatch = v
         end
@@ -319,7 +304,6 @@ if not resolved_kind then
 end
 
 CONFIG.PET_KIND = resolved_kind
--- normalize rarity from DB (e.g. "Ultra Rare" → "ultra_rare")
 CONFIG.RARITY = (resolved_data.rarity or ""):lower():gsub("%s+", "_")
 
 print("✅ Resolved → Kind: " .. CONFIG.PET_KIND .. " | Rarity: " .. CONFIG.RARITY)
@@ -341,7 +325,7 @@ if not potions_per_pet then
 end
 
 -- ============================================
--- ANTI-AFK (No movement version)
+-- ANTI-AFK
 -- ============================================
 LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
@@ -350,7 +334,7 @@ end)
 print("✅ Anti-AFK enabled")
 
 -- ============================================
--- REMOTE DEHASH (FIXED - scans all upvalues)
+-- REMOTE DEHASH
 -- ============================================
 print("🔧 Dehashing remotes...")
 local RouterClient = require(ReplicatedStorage.ClientModules.Core:WaitForChild("RouterClient"):WaitForChild("RouterClient"))
@@ -384,12 +368,12 @@ dehash()
 print("✅ Remotes dehashed!")
 
 -- ============================================
--- DISABLE USELESS UI (Friend's approach)
+-- DISABLE USELESS UI
 -- ============================================
 LocalPlayer.PlayerGui.DialogApp.Enabled = false
 
 -- ============================================
--- ENTER THE GAME (Friend's logic)
+-- ENTER THE GAME
 -- ============================================
 local UIManager = require(ReplicatedStorage.Fsys).load("UIManager")
 
@@ -416,7 +400,6 @@ end
 
 enter_the_game()
 
--- wait for character to fully load (friend's check)
 repeat task.wait() until LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 print("✅ Character loaded!")
 
@@ -456,8 +439,6 @@ local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 local function sendWebhook(message, is_debug)
     if not CONFIG.WEBHOOK_URL or CONFIG.WEBHOOK_URL == "" then return end
     if not request then return end
-    
-    -- Skip debug messages if debug logging is disabled
     if is_debug and not CONFIG.DEBUG_LOGGING then return end
     
     pcall(function()
@@ -470,19 +451,16 @@ local function sendWebhook(message, is_debug)
     end)
 end
 
--- Wrapper for debug logging
 local function logDebug(message)
     print(message)
     sendWebhook(string.format("🔍 %s - %s", playerName, message), true)
 end
 
--- Wrapper for important events
 local function logEvent(message)
     print(message)
     sendWebhook(string.format("📋 %s - %s", playerName, message), false)
 end
 
--- Wrapper for errors
 local function logError(message)
     warn(message)
     sendWebhook(string.format("❌ %s - %s", playerName, message), false)
@@ -575,7 +553,6 @@ local function analyze_pet_inventory()
                 local is_mega = pet.properties and pet.properties.mega_neon or false
                 local age = pet.properties and pet.properties.age or 0
 
-                -- skip megas, they're already done
                 if is_mega then continue end
 
                 if is_neon then
@@ -640,36 +617,87 @@ local function get_full_grown_neons()
     return neons
 end
 
--- ============== EQUIP PET ==============
+-- ============================================
+-- CHECK IF PET IS EQUIPPED
+-- Looks in the character for a tool matching
+-- the pet's unique ID
+-- ============================================
+local function is_pet_equipped(pet_unique)
+    local equipped = false
+    pcall(function()
+        local character = LocalPlayer.Character
+        if not character then return end
+        for _, tool in ipairs(character:GetChildren()) do
+            -- Tools placed directly in character = currently held/equipped
+            if tool:IsA("Tool") then
+                -- Check tool name or attributes for the unique ID
+                if tostring(tool.Name) == tostring(pet_unique) then
+                    equipped = true
+                    return
+                end
+                -- Some games store unique in an attribute
+                local attr = tool:GetAttribute("unique") or tool:GetAttribute("pet_unique")
+                if attr and tostring(attr) == tostring(pet_unique) then
+                    equipped = true
+                    return
+                end
+            end
+        end
+        -- Also check Backpack as a fallback (equipped = in character, not backpack)
+        -- but some games keep it in backpack when "equipped" in their own sense
+        local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+        if backpack then
+            for _, tool in ipairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") then
+                    if tostring(tool.Name) == tostring(pet_unique) then
+                        equipped = true  -- at minimum it's loaded/accessible
+                        return
+                    end
+                    local attr = tool:GetAttribute("unique") or tool:GetAttribute("pet_unique")
+                    if attr and tostring(attr) == tostring(pet_unique) then
+                        equipped = true
+                        return
+                    end
+                end
+            end
+        end
+    end)
+    return equipped
+end
+
+-- ============================================
+-- EQUIP PET WITH VERIFICATION
+-- Tries to equip, then checks if it worked.
+-- If not equipped, retries up to max attempts.
+-- ============================================
 local function equip_pet(pet_unique)
-    logDebug(string.format("Equipping pet: %s", pet_unique))
-    local success = false
-    local attempts = 0
-    
-    while not success and attempts < 3 do
-        attempts = attempts + 1
-        logDebug(string.format("Equip attempt %d/3", attempts))
-        
-        success = pcall(function()
+    local MAX_EQUIP_ATTEMPTS = 5
+
+    for attempt = 1, MAX_EQUIP_ATTEMPTS do
+        logDebug(string.format("🔧 Equip attempt %d/%d for pet: %s", attempt, MAX_EQUIP_ATTEMPTS, pet_unique))
+
+        pcall(function()
             ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
                 use_sound_delay = true,
                 equip_as_last = false
             })
+            task.wait(2)  -- Wait for equip to register server-side
         end)
-        
-        if not success and attempts < 3 then
-            logError(string.format("Equip failed on attempt %d, retrying...", attempts))
+
+        task.wait(1)  -- Small extra buffer before checking
+
+        -- ✅ CHECK: Is the pet actually equipped now?
+        if is_pet_equipped(pet_unique) then
+            logEvent(string.format("✅ Pet equipped confirmed on attempt %d!", attempt))
+            return true
+        else
+            logError(string.format("⚠️ Pet NOT equipped after attempt %d — retrying...", attempt))
             task.wait(1)
         end
     end
-    
-    if success then
-        logDebug("Pet equipped successfully")
-    else
-        logError("Pet equip failed after 3 attempts!")
-    end
-    
-    return success
+
+    logError(string.format("❌ Pet FAILED to equip after %d attempts! Proceeding anyway...", MAX_EQUIP_ATTEMPTS))
+    return false
 end
 
 -- ============== FEED POTIONS ==============
@@ -702,7 +730,6 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
 
     local function fast_consume(p_unique)
         logDebug("Starting fast consume")
-        -- Use FindFirstChild with timeout instead of WaitForChild (prevents infinite hang)
         local timeout = 0
         local potion_object = nil
         
@@ -737,14 +764,14 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
 
     print("   ⚙️ Feed")
     create_objects(pet_unique, working_potion_unique, sub_potions_array)
-    task.wait(2)  -- Increased from 1s to 2s
+    task.wait(2)
 
     print("   🚀 Fast Consume")
     local consume_success = fast_consume(pet_unique)
     if not consume_success then
         logError("Fast consume failed, trying again...")
         task.wait(1)
-        consume_success = fast_consume(pet_unique)  -- Retry once
+        consume_success = fast_consume(pet_unique)
         if consume_success then
             logEvent("Fast consume succeeded on retry")
         else
@@ -753,7 +780,7 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
     else
         logDebug("Fast consume successful")
     end
-    task.wait(2)  -- Increased from 1s to 2s
+    task.wait(2)
     
     logDebug("Feed process complete")
 end
@@ -771,7 +798,6 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
     end
 
     print(string.format("   📊 Age: %d → %d", initial_age, expected_final_age))
-    logDebug(string.format("Initial age: %d, Target: %d", initial_age, expected_final_age))
 
     for attempt = 1, MAX_AGE_RETRIES do
         if attempt > 1 then
@@ -779,8 +805,18 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
             logEvent(string.format("Retry attempt %d/%d", attempt, MAX_AGE_RETRIES))
         end
 
-        equip_pet(pet_unique)
-        print("   ✅ Equipped")
+        -- ✅ EQUIP WITH VERIFICATION: checks if equipped, retries if not
+        print("   🔧 Equipping pet...")
+        local equipped = equip_pet(pet_unique)
+
+        if equipped then
+            print("   ✅ Pet is equipped — proceeding to feed potions")
+            logEvent("Pet confirmed equipped, feeding potions now")
+        else
+            print("   ⚠️ Could not confirm equip — attempting to feed anyway")
+            logError("Could not confirm pet equip, feeding anyway as fallback")
+        end
+
         task.wait(1)
 
         local main_potion = potion_uniques[1]
@@ -790,29 +826,25 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
         end
 
         print(string.format("   🍼 Feeding %d potions", #potion_uniques))
-        logDebug(string.format("Feeding %d potions to pet", #potion_uniques))
         feed_potions_fast(pet_unique, main_potion, sub_potions)
 
-        print("   ⏳ Verifying...")
-        logDebug(string.format("Waiting %ds for verification...", AGE_VERIFY_WAIT))
+        print("   ⏳ Verifying age...")
         task.wait(AGE_VERIFY_WAIT)
 
         local current_age = get_pet_age(pet_unique)
 
         if not current_age then
-            print("   ⚠️ Can't verify, assuming success")
+            print("   ⚠️ Can't verify age, assuming success")
             logEvent("Cannot verify age, assuming success")
             return true
         end
-
-        logDebug(string.format("Current age after feeding: %d", current_age))
 
         if current_age >= expected_final_age then
             print(string.format("   ✅ SUCCESS! %d → %d", initial_age, current_age))
             logEvent(string.format("Age up SUCCESS! %d → %d", initial_age, current_age))
             return true
         else
-            print(string.format("   ⚠️ Still age %d", current_age))
+            print(string.format("   ⚠️ Still age %d (expected %d)", current_age, expected_final_age))
             logEvent(string.format("Age up incomplete - Still age %d (expected %d)", current_age, expected_final_age))
             if attempt < MAX_AGE_RETRIES then
                 task.wait(2)
@@ -849,10 +881,7 @@ local function run_aging()
     if total_pets == 0 then
         print("\n❌ NO PETS OF TYPE: " .. CONFIG.PET_KIND)
         sendWebhook(string.format("❌ %s - No %s pets found, kicking.", playerName, CONFIG.PET_KIND))
-        
-        -- Disable FarmSync before kicking
         disable_farmsync_account()
-        
         task.wait(3)
         LocalPlayer:Kick("No pets found — done!")
         return
@@ -863,10 +892,7 @@ local function run_aging()
     if total_potions == 0 then
         print("\n❌ NO AGE POTIONS")
         sendWebhook(string.format("❌ %s - No potions, kicking.", playerName))
-        
-        -- Disable FarmSync before kicking
         disable_farmsync_account()
-        
         task.wait(3)
         LocalPlayer:Kick("No potions — done!")
         return
@@ -883,29 +909,22 @@ local function run_aging()
 
     local cycle = 0
     local last_cycle_time = os.time()
-    local max_cycle_time = 180  -- 3 minutes max per cycle
+    local max_cycle_time = 180
 
-    -- Watchdog: Detect stuck cycles
+    -- Watchdog
     spawn(function()
         while true do
-            task.wait(30)  -- Check every 30 seconds
-            
+            task.wait(30)
             local time_in_cycle = os.time() - last_cycle_time
-            
             if time_in_cycle > max_cycle_time then
                 local msg = string.format("WATCHDOG ALERT: Cycle taking too long (%ds / %ds max)", time_in_cycle, max_cycle_time)
                 print("\n⚠️ " .. msg)
                 logError(msg)
                 logEvent("Attempting recovery - unequipping all")
-                
-                -- Try to recover by unequipping everything
                 pcall(function()
                     ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/UnequipAll"):FireServer()
                 end)
-                
                 task.wait(2)
-                
-                -- Reset timer
                 last_cycle_time = os.time()
                 logEvent("Recovery attempted, timer reset")
             end
@@ -914,7 +933,7 @@ local function run_aging()
 
     while true do
         cycle = cycle + 1
-        last_cycle_time = os.time()  -- Reset watchdog timer
+        last_cycle_time = os.time()
         print(string.format("\n========== CYCLE %d ==========", cycle))
         logEvent(string.format("Starting Cycle %d", cycle))
 
@@ -927,15 +946,8 @@ local function run_aging()
         print(string.format("   Normal (fg / age6): %d", analysis.full_grown_normal))
         print(string.format("   Neon   (not fg):    %d", #analysis.neon_pets))
         print(string.format("   Neon   (fg / age6): %d", analysis.full_grown_neons))
-        
-        logDebug(string.format("Cycle %d - Potions: %d, Normal (not fg): %d, Normal (fg): %d, Neon (not fg): %d, Neon (fg): %d",
-            cycle, potions, #analysis.normal_pets, analysis.full_grown_normal, #analysis.neon_pets, analysis.full_grown_neons))
 
         local did_something = false
-
-        -- ============================================
-        -- PHASE 1: AGE ONE PET
-        -- ============================================
         local aged_this_cycle = false
 
         if #analysis.normal_pets > 0 and potions >= potions_per_pet then
@@ -947,7 +959,7 @@ local function run_aging()
             if #potion_batch >= potions_per_pet then
                 print(string.format("   age %d → 6", pet.age))
                 local success = age_up_pet_verified(pet.unique, potion_batch, 6)
-                if success then 
+                if success then
                     total_aged = total_aged + 1
                     logEvent("Normal pet aged successfully")
                 else
@@ -967,7 +979,7 @@ local function run_aging()
             if #potion_batch >= potions_per_pet then
                 print(string.format("   age %d → 6", pet.age))
                 local success = age_up_pet_verified(pet.unique, potion_batch, 6)
-                if success then 
+                if success then
                     total_aged = total_aged + 1
                     logEvent("Neon pet aged successfully")
                 else
@@ -1010,9 +1022,6 @@ local function run_aging()
             task.wait(CONFIG.PET_DELAY)
         end
 
-        -- ============================================
-        -- PHASE 2: FUSE
-        -- ============================================
         analysis = analyze_pet_inventory()
 
         if analysis.full_grown_normal >= 4 then
@@ -1043,9 +1052,6 @@ local function run_aging()
             end
         end
 
-        -- ============================================
-        -- NOTHING LEFT TO DO
-        -- ============================================
         if not did_something then
             local final_potions  = count_age_potions()
             local final_analysis = analyze_pet_inventory()
@@ -1066,9 +1072,6 @@ local function run_aging()
         end
     end
 
-    -- ============================================
-    -- FINAL SUMMARY + FARMSYNC DISABLE + KICK
-    -- ============================================
     local final_potions = count_age_potions()
 
     print("\n" .. ("="):rep(50))
@@ -1084,7 +1087,6 @@ local function run_aging()
     sendWebhook(string.format("✅ %s - COMPLETE\nAged: %d | Failed: %d | Neons: %d | Megas: %d\nRemaining potions: %d",
         playerName, total_aged, total_failed, total_neons, total_megas, final_potions))
 
-    -- Disable FarmSync account BEFORE kicking
     disable_farmsync_account()
 
     print("\n🔴 Aging done — kicking in 5s...")
