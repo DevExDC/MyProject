@@ -620,12 +620,26 @@ end
 
 -- ============== EQUIP PET ==============
 local function equip_pet(pet_unique)
-    pcall(function()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
-            use_sound_delay = true,
-            equip_as_last = false
-        })
-    end)
+    local success = false
+    local attempts = 0
+    
+    while not success and attempts < 3 do
+        attempts = attempts + 1
+        
+        success = pcall(function()
+            ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
+                use_sound_delay = true,
+                equip_as_last = false
+            })
+        end)
+        
+        if not success and attempts < 3 then
+            print("   ⚠️ Equip failed, retrying...")
+            task.wait(1)
+        end
+    end
+    
+    return success
 end
 
 -- ============== FEED POTIONS ==============
@@ -650,9 +664,28 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
     end
 
     local function fast_consume(p_unique)
-        local potion_object = workspace:WaitForChild("PetObjects"):FindFirstChild("AgePotion")
+        -- Use FindFirstChild with timeout instead of WaitForChild (prevents infinite hang)
+        local timeout = 0
+        local potion_object = nil
+        
+        while not potion_object and timeout < 10 do
+            local petObjects = workspace:FindFirstChild("PetObjects")
+            if petObjects then
+                potion_object = petObjects:FindFirstChild("AgePotion")
+            end
+            
+            if not potion_object then
+                task.wait(0.5)
+                timeout = timeout + 0.5
+            end
+        end
+        
         if potion_object then
             ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(potion_object, p_unique)
+            return true
+        else
+            warn("   ⚠️ AgePotion object not found after 10s")
+            return false
         end
     end
 
@@ -661,11 +694,16 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
 
     print("   ⚙️ Feed")
     create_objects(pet_unique, working_potion_unique, sub_potions_array)
-    task.wait(1)
+    task.wait(2)  -- Increased from 1s to 2s
 
     print("   🚀 Fast Consume")
-    fast_consume(pet_unique)
-    task.wait(1)
+    local consume_success = fast_consume(pet_unique)
+    if not consume_success then
+        print("   ⚠️ Fast consume failed, trying again...")
+        task.wait(1)
+        fast_consume(pet_unique)  -- Retry once
+    end
+    task.wait(2)  -- Increased from 1s to 2s
 end
 
 -- ============== AGE UP WITH VERIFICATION ==============
@@ -779,9 +817,36 @@ local function run_aging()
         playerName, total_pets, CONFIG.PET_KIND, total_potions))
 
     local cycle = 0
+    local last_cycle_time = os.time()
+    local max_cycle_time = 180  -- 3 minutes max per cycle
+
+    -- Watchdog: Detect stuck cycles
+    spawn(function()
+        while true do
+            task.wait(30)  -- Check every 30 seconds
+            
+            local time_in_cycle = os.time() - last_cycle_time
+            
+            if time_in_cycle > max_cycle_time then
+                print("\n⚠️ WATCHDOG: Cycle taking too long (" .. time_in_cycle .. "s)")
+                print("⚠️ Script may be stuck! Attempting recovery...")
+                
+                -- Try to recover by unequipping everything
+                pcall(function()
+                    ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/UnequipAll"):FireServer()
+                end)
+                
+                task.wait(2)
+                
+                -- Reset timer
+                last_cycle_time = os.time()
+            end
+        end
+    end)
 
     while true do
         cycle = cycle + 1
+        last_cycle_time = os.time()  -- Reset watchdog timer
         print(string.format("\n========== CYCLE %d ==========", cycle))
 
         local analysis = analyze_pet_inventory()
