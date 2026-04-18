@@ -29,6 +29,7 @@ local CONFIG = getgenv().AgingConfig
 
 -- Default settings
 if CONFIG.PET_DELAY == nil then CONFIG.PET_DELAY = 5 end  -- Delay between pets (seconds)
+if CONFIG.DEBUG_LOGGING == nil then CONFIG.DEBUG_LOGGING = true end  -- Send detailed logs to webhook
 
 -- Hardcoded aging settings (no need to configure)
 local MAX_AGE_RETRIES = 5
@@ -452,9 +453,12 @@ print("✅ Ready to start!")
 -- ============================================
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
 
-local function sendWebhook(message)
+local function sendWebhook(message, is_debug)
     if not CONFIG.WEBHOOK_URL or CONFIG.WEBHOOK_URL == "" then return end
     if not request then return end
+    
+    -- Skip debug messages if debug logging is disabled
+    if is_debug and not CONFIG.DEBUG_LOGGING then return end
     
     pcall(function()
         request({
@@ -464,6 +468,24 @@ local function sendWebhook(message)
             Body = HttpService:JSONEncode({["content"] = message})
         })
     end)
+end
+
+-- Wrapper for debug logging
+local function logDebug(message)
+    print(message)
+    sendWebhook(string.format("🔍 %s - %s", playerName, message), true)
+end
+
+-- Wrapper for important events
+local function logEvent(message)
+    print(message)
+    sendWebhook(string.format("📋 %s - %s", playerName, message), false)
+end
+
+-- Wrapper for errors
+local function logError(message)
+    warn(message)
+    sendWebhook(string.format("❌ %s - %s", playerName, message), false)
 end
 
 -- ============== GET PET AGE ==============
@@ -620,11 +642,13 @@ end
 
 -- ============== EQUIP PET ==============
 local function equip_pet(pet_unique)
+    logDebug(string.format("Equipping pet: %s", pet_unique))
     local success = false
     local attempts = 0
     
     while not success and attempts < 3 do
         attempts = attempts + 1
+        logDebug(string.format("Equip attempt %d/3", attempts))
         
         success = pcall(function()
             ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
@@ -634,9 +658,15 @@ local function equip_pet(pet_unique)
         end)
         
         if not success and attempts < 3 then
-            print("   ⚠️ Equip failed, retrying...")
+            logError(string.format("Equip failed on attempt %d, retrying...", attempts))
             task.wait(1)
         end
+    end
+    
+    if success then
+        logDebug("Pet equipped successfully")
+    else
+        logError("Pet equip failed after 3 attempts!")
     end
     
     return success
@@ -644,15 +674,21 @@ end
 
 -- ============== FEED POTIONS ==============
 local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_array)
+    logDebug(string.format("Starting feed process - Pet: %s, Main potion: %s, Sub potions: %d", 
+        pet_unique, working_potion_unique, #sub_potions_array))
+    
     local function equip_potion(potion_unique)
+        logDebug("Equipping potion: " .. potion_unique)
         ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(tostring(potion_unique), {
             use_sound_delay = false,
             equip_as_last = false
         })
         task.wait(1)
+        logDebug("Potion equipped")
     end
 
     local function create_objects(p_unique, pot_unique, sub_potions)
+        logDebug("Creating pet object for feeding")
         ReplicatedStorage:WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(
             "__Enum_PetObjectCreatorType_2",
             {
@@ -661,9 +697,11 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
                 unique_id = pot_unique
             }
         )
+        logDebug("Pet object created")
     end
 
     local function fast_consume(p_unique)
+        logDebug("Starting fast consume")
         -- Use FindFirstChild with timeout instead of WaitForChild (prevents infinite hang)
         local timeout = 0
         local potion_object = nil
@@ -677,14 +715,19 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
             if not potion_object then
                 task.wait(0.5)
                 timeout = timeout + 0.5
+                if timeout % 2 == 0 then
+                    logDebug(string.format("Waiting for AgePotion object... (%ds)", timeout))
+                end
             end
         end
         
         if potion_object then
+            logDebug("AgePotion object found, consuming...")
             ReplicatedStorage:WaitForChild("API"):WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(potion_object, p_unique)
+            logDebug("Consume sent")
             return true
         else
-            warn("   ⚠️ AgePotion object not found after 10s")
+            logError("AgePotion object not found after 10s timeout!")
             return false
         end
     end
@@ -699,27 +742,41 @@ local function feed_potions_fast(pet_unique, working_potion_unique, sub_potions_
     print("   🚀 Fast Consume")
     local consume_success = fast_consume(pet_unique)
     if not consume_success then
-        print("   ⚠️ Fast consume failed, trying again...")
+        logError("Fast consume failed, trying again...")
         task.wait(1)
-        fast_consume(pet_unique)  -- Retry once
+        consume_success = fast_consume(pet_unique)  -- Retry once
+        if consume_success then
+            logEvent("Fast consume succeeded on retry")
+        else
+            logError("Fast consume failed on both attempts!")
+        end
+    else
+        logDebug("Fast consume successful")
     end
     task.wait(2)  -- Increased from 1s to 2s
+    
+    logDebug("Feed process complete")
 end
 
 -- ============== AGE UP WITH VERIFICATION ==============
 local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_age)
+    logEvent(string.format("Starting age verification - Pet: %s, Potions: %d, Target age: %d", 
+        pet_unique, #potion_uniques, expected_final_age))
+    
     local initial_age = get_pet_age(pet_unique)
 
     if not initial_age then
-        print("   ❌ Can't get pet age")
+        logError("Cannot get pet age!")
         return false
     end
 
     print(string.format("   📊 Age: %d → %d", initial_age, expected_final_age))
+    logDebug(string.format("Initial age: %d, Target: %d", initial_age, expected_final_age))
 
     for attempt = 1, MAX_AGE_RETRIES do
         if attempt > 1 then
             print(string.format("   🔄 Retry %d/%d", attempt, MAX_AGE_RETRIES))
+            logEvent(string.format("Retry attempt %d/%d", attempt, MAX_AGE_RETRIES))
         end
 
         equip_pet(pet_unique)
@@ -733,23 +790,30 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
         end
 
         print(string.format("   🍼 Feeding %d potions", #potion_uniques))
+        logDebug(string.format("Feeding %d potions to pet", #potion_uniques))
         feed_potions_fast(pet_unique, main_potion, sub_potions)
 
         print("   ⏳ Verifying...")
+        logDebug(string.format("Waiting %ds for verification...", AGE_VERIFY_WAIT))
         task.wait(AGE_VERIFY_WAIT)
 
         local current_age = get_pet_age(pet_unique)
 
         if not current_age then
             print("   ⚠️ Can't verify, assuming success")
+            logEvent("Cannot verify age, assuming success")
             return true
         end
 
+        logDebug(string.format("Current age after feeding: %d", current_age))
+
         if current_age >= expected_final_age then
             print(string.format("   ✅ SUCCESS! %d → %d", initial_age, current_age))
+            logEvent(string.format("Age up SUCCESS! %d → %d", initial_age, current_age))
             return true
         else
             print(string.format("   ⚠️ Still age %d", current_age))
+            logEvent(string.format("Age up incomplete - Still age %d (expected %d)", current_age, expected_final_age))
             if attempt < MAX_AGE_RETRIES then
                 task.wait(2)
             end
@@ -757,6 +821,7 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
     end
 
     print("   ❌ FAILED after retries")
+    logError(string.format("Age up FAILED after %d retries", MAX_AGE_RETRIES))
     return false
 end
 
@@ -828,8 +893,10 @@ local function run_aging()
             local time_in_cycle = os.time() - last_cycle_time
             
             if time_in_cycle > max_cycle_time then
-                print("\n⚠️ WATCHDOG: Cycle taking too long (" .. time_in_cycle .. "s)")
-                print("⚠️ Script may be stuck! Attempting recovery...")
+                local msg = string.format("WATCHDOG ALERT: Cycle taking too long (%ds / %ds max)", time_in_cycle, max_cycle_time)
+                print("\n⚠️ " .. msg)
+                logError(msg)
+                logEvent("Attempting recovery - unequipping all")
                 
                 -- Try to recover by unequipping everything
                 pcall(function()
@@ -840,6 +907,7 @@ local function run_aging()
                 
                 -- Reset timer
                 last_cycle_time = os.time()
+                logEvent("Recovery attempted, timer reset")
             end
         end
     end)
@@ -848,6 +916,7 @@ local function run_aging()
         cycle = cycle + 1
         last_cycle_time = os.time()  -- Reset watchdog timer
         print(string.format("\n========== CYCLE %d ==========", cycle))
+        logEvent(string.format("Starting Cycle %d", cycle))
 
         local analysis = analyze_pet_inventory()
         local potions  = count_age_potions()
@@ -858,6 +927,9 @@ local function run_aging()
         print(string.format("   Normal (fg / age6): %d", analysis.full_grown_normal))
         print(string.format("   Neon   (not fg):    %d", #analysis.neon_pets))
         print(string.format("   Neon   (fg / age6): %d", analysis.full_grown_neons))
+        
+        logDebug(string.format("Cycle %d - Potions: %d, Normal (not fg): %d, Normal (fg): %d, Neon (not fg): %d, Neon (fg): %d",
+            cycle, potions, #analysis.normal_pets, analysis.full_grown_normal, #analysis.neon_pets, analysis.full_grown_neons))
 
         local did_something = false
 
@@ -868,28 +940,40 @@ local function run_aging()
 
         if #analysis.normal_pets > 0 and potions >= potions_per_pet then
             print("\n🐾 AGING: normal pet...")
+            logEvent(string.format("AGING normal pet (age %d)", analysis.normal_pets[1].age))
             local pet = analysis.normal_pets[1]
             local potion_batch = get_age_potion_uniques(potions_per_pet)
 
             if #potion_batch >= potions_per_pet then
                 print(string.format("   age %d → 6", pet.age))
                 local success = age_up_pet_verified(pet.unique, potion_batch, 6)
-                if success then total_aged = total_aged + 1
-                else            total_failed = total_failed + 1 end
+                if success then 
+                    total_aged = total_aged + 1
+                    logEvent("Normal pet aged successfully")
+                else
+                    total_failed = total_failed + 1
+                    logError("Normal pet aging FAILED")
+                end
                 aged_this_cycle = true
                 did_something   = true
             end
 
         elseif #analysis.neon_pets > 0 and potions >= potions_per_pet then
             print("\n💎 AGING: neon pet...")
+            logEvent(string.format("AGING neon pet (age %d)", analysis.neon_pets[1].age))
             local pet = analysis.neon_pets[1]
             local potion_batch = get_age_potion_uniques(potions_per_pet)
 
             if #potion_batch >= potions_per_pet then
                 print(string.format("   age %d → 6", pet.age))
                 local success = age_up_pet_verified(pet.unique, potion_batch, 6)
-                if success then total_aged = total_aged + 1
-                else            total_failed = total_failed + 1 end
+                if success then 
+                    total_aged = total_aged + 1
+                    logEvent("Neon pet aged successfully")
+                else
+                    total_failed = total_failed + 1
+                    logError("Neon pet aging FAILED")
+                end
                 aged_this_cycle = true
                 did_something   = true
             end
