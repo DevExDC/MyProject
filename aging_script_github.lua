@@ -348,10 +348,11 @@ print("✅ Anti-AFK enabled")
 -- ============================================
 -- REMOTE DEHASH
 -- ============================================
-local function dehash()
-    local router = require(RS.ClientModules.Core.RouterClient.RouterClient)
-    local fn = router.init
+print("🔧 Dehashing remotes...")
+local RouterClient = require(ReplicatedStorage.ClientModules.Core:WaitForChild("RouterClient"):WaitForChild("RouterClient"))
 
+local function dehash()
+    local fn = RouterClient.init
     for i = 1, 30 do
         local ok, val = pcall(debug.getupvalue, fn, i)
         if ok and type(val) == "table" then
@@ -371,11 +372,11 @@ local function dehash()
             end
         end
     end
-
     warn("[Dehash] Failed — no remote table found in upvalues")
 end
 
 dehash()
+print("✅ Remotes dehashed!")
 
 -- ============================================
 -- DISABLE USELESS UI (Friend's approach)
