@@ -618,85 +618,34 @@ local function get_full_grown_neons()
 end
 
 -- ============================================
--- CHECK IF PET IS EQUIPPED
--- Looks in the character for a tool matching
--- the pet's unique ID
--- ============================================
-local function is_pet_equipped(pet_unique)
-    local equipped = false
-    pcall(function()
-        local character = LocalPlayer.Character
-        if not character then return end
-        for _, tool in ipairs(character:GetChildren()) do
-            -- Tools placed directly in character = currently held/equipped
-            if tool:IsA("Tool") then
-                -- Check tool name or attributes for the unique ID
-                if tostring(tool.Name) == tostring(pet_unique) then
-                    equipped = true
-                    return
-                end
-                -- Some games store unique in an attribute
-                local attr = tool:GetAttribute("unique") or tool:GetAttribute("pet_unique")
-                if attr and tostring(attr) == tostring(pet_unique) then
-                    equipped = true
-                    return
-                end
-            end
-        end
-        -- Also check Backpack as a fallback (equipped = in character, not backpack)
-        -- but some games keep it in backpack when "equipped" in their own sense
-        local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-        if backpack then
-            for _, tool in ipairs(backpack:GetChildren()) do
-                if tool:IsA("Tool") then
-                    if tostring(tool.Name) == tostring(pet_unique) then
-                        equipped = true  -- at minimum it's loaded/accessible
-                        return
-                    end
-                    local attr = tool:GetAttribute("unique") or tool:GetAttribute("pet_unique")
-                    if attr and tostring(attr) == tostring(pet_unique) then
-                        equipped = true
-                        return
-                    end
-                end
-            end
-        end
-    end)
-    return equipped
-end
-
--- ============================================
--- EQUIP PET WITH VERIFICATION
--- Tries to equip, then checks if it worked.
--- If not equipped, retries up to max attempts.
+-- EQUIP PET
+-- Just fires the equip remote and waits.
+-- No verification needed — this game manages
+-- pets server-side and equip always works.
 -- ============================================
 local function equip_pet(pet_unique)
-    local MAX_EQUIP_ATTEMPTS = 5
+    logDebug(string.format("🔧 Equipping pet: %s", pet_unique))
 
-    for attempt = 1, MAX_EQUIP_ATTEMPTS do
-        logDebug(string.format("🔧 Equip attempt %d/%d for pet: %s", attempt, MAX_EQUIP_ATTEMPTS, pet_unique))
-
-        pcall(function()
+    local success = false
+    for attempt = 1, 3 do
+        success = pcall(function()
             ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(pet_unique, {
                 use_sound_delay = true,
                 equip_as_last = false
             })
-            task.wait(2)  -- Wait for equip to register server-side
         end)
 
-        task.wait(1)  -- Small extra buffer before checking
-
-        -- ✅ CHECK: Is the pet actually equipped now?
-        if is_pet_equipped(pet_unique) then
-            logEvent(string.format("✅ Pet equipped confirmed on attempt %d!", attempt))
+        if success then
+            logEvent(string.format("✅ Equip call sent on attempt %d", attempt))
+            task.wait(2)  -- Wait for server to register
             return true
         else
-            logError(string.format("⚠️ Pet NOT equipped after attempt %d — retrying...", attempt))
+            logError(string.format("⚠️ Equip call failed on attempt %d, retrying...", attempt))
             task.wait(1)
         end
     end
 
-    logError(string.format("❌ Pet FAILED to equip after %d attempts! Proceeding anyway...", MAX_EQUIP_ATTEMPTS))
+    logError("❌ Equip call failed after 3 attempts! Proceeding anyway...")
     return false
 end
 
@@ -805,18 +754,9 @@ local function age_up_pet_verified(pet_unique, potion_uniques, expected_final_ag
             logEvent(string.format("Retry attempt %d/%d", attempt, MAX_AGE_RETRIES))
         end
 
-        -- ✅ EQUIP WITH VERIFICATION: checks if equipped, retries if not
         print("   🔧 Equipping pet...")
-        local equipped = equip_pet(pet_unique)
-
-        if equipped then
-            print("   ✅ Pet is equipped — proceeding to feed potions")
-            logEvent("Pet confirmed equipped, feeding potions now")
-        else
-            print("   ⚠️ Could not confirm equip — attempting to feed anyway")
-            logError("Could not confirm pet equip, feeding anyway as fallback")
-        end
-
+        equip_pet(pet_unique)
+        print("   ✅ Equip sent — proceeding to feed potions")
         task.wait(1)
 
         local main_potion = potion_uniques[1]
