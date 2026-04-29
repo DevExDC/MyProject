@@ -188,7 +188,7 @@ local function createUI()
     header.Size = UDim2.new(1, 0, 0, 40)
     header.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
     header.BorderSizePixel = 0
-    header.Text = "● " .. playerName .. " | VoHub"
+    header.Text = "● " .. playerName .. " | NOTTOOL"
     header.TextColor3 = Color3.new(1, 1, 1)
     header.Font = Enum.Font.GothamBold
     header.TextSize = 18
