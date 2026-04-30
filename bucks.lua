@@ -1,16 +1,22 @@
 -- ============================================
--- AUTO BUCKS TRANSFER - SENDER ONLY
--- With custom UI like image
+-- AUTO BUCKS TRANSFER SYSTEM
+-- Sender: Buys hotdogs from receiver
+-- Receiver: Places stand and monitors earnings
 -- ============================================
 
 if not getgenv().BucksConfig then
-    error("❌ ERROR: No configuration found!\n\nExample:\n\ngetgenv().BucksConfig = {\n    RECEIVER_USERNAME = \"ReceiverName\",\n    WEBHOOK_URL = \"https://discord.com/api/webhooks/...\",\n}")
+    error("❌ ERROR: No configuration found!\n\nExample:\n\ngetgenv().BucksConfig = {\n    ROLE = \"sender\",\n    RECEIVER_USERNAME = \"ReceiverName\",\n    WEBHOOK_URL = \"https://discord.com/api/webhooks/...\",\n}")
 end
 
 local CONFIG = getgenv().BucksConfig
 
-if not CONFIG.RECEIVER_USERNAME or CONFIG.RECEIVER_USERNAME == "" then
-    error("❌ RECEIVER_USERNAME is required!")
+-- Validate config
+if not CONFIG.ROLE or (CONFIG.ROLE ~= "sender" and CONFIG.ROLE ~= "receiver") then
+    error("❌ ROLE must be either 'sender' or 'receiver'")
+end
+
+if CONFIG.ROLE == "sender" and (not CONFIG.RECEIVER_USERNAME or CONFIG.RECEIVER_USERNAME == "") then
+    error("❌ RECEIVER_USERNAME is required when ROLE is 'sender'")
 end
 
 -- ============================================
@@ -188,7 +194,7 @@ local function createUI()
     header.Size = UDim2.new(1, 0, 0, 40)
     header.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
     header.BorderSizePixel = 0
-    header.Text = "● " .. playerName .. " | NOTTOOL"
+    header.Text = "● " .. playerName .. " | VoHub"
     header.TextColor3 = Color3.new(1, 1, 1)
     header.Font = Enum.Font.GothamBold
     header.TextSize = 18
@@ -209,8 +215,8 @@ local function createUI()
     statusLabel.Size = UDim2.new(1, -30, 0, 30)
     statusLabel.Position = UDim2.new(0, 15, 0, 50)
     statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "📊 No pet/egg equipped, retrying.."
-    statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    statusLabel.Text = "🔄 Starting..."
+    statusLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
     statusLabel.Font = Enum.Font.GothamBold
     statusLabel.TextSize = 14
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -224,47 +230,47 @@ local function createUI()
     statsContainer.BackgroundTransparency = 1
     statsContainer.Parent = mainFrame
     
-    -- Bucks Remaining Icon
-    local bucksIcon = Instance.new("TextLabel")
-    bucksIcon.Size = UDim2.new(0, 30, 0, 30)
-    bucksIcon.Position = UDim2.new(0, 0, 0, 0)
-    bucksIcon.BackgroundTransparency = 1
-    bucksIcon.Text = "💵"
-    bucksIcon.TextSize = 20
-    bucksIcon.Parent = statsContainer
+    -- First Stat Icon
+    local stat1Icon = Instance.new("TextLabel")
+    stat1Icon.Size = UDim2.new(0, 30, 0, 30)
+    stat1Icon.Position = UDim2.new(0, 0, 0, 0)
+    stat1Icon.BackgroundTransparency = 1
+    stat1Icon.Text = "💵"
+    stat1Icon.TextSize = 20
+    stat1Icon.Parent = statsContainer
     
-    -- Bucks Remaining Label
-    local bucksLabel = Instance.new("TextLabel")
-    bucksLabel.Size = UDim2.new(0, 150, 0, 30)
-    bucksLabel.Position = UDim2.new(0, 35, 0, 0)
-    bucksLabel.BackgroundTransparency = 1
-    bucksLabel.Text = "0"
-    bucksLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
-    bucksLabel.Font = Enum.Font.GothamBold
-    bucksLabel.TextSize = 24
-    bucksLabel.TextXAlignment = Enum.TextXAlignment.Left
-    bucksLabel.Parent = statsContainer
+    -- First Stat Label
+    local stat1Label = Instance.new("TextLabel")
+    stat1Label.Size = UDim2.new(0, 150, 0, 30)
+    stat1Label.Position = UDim2.new(0, 35, 0, 0)
+    stat1Label.BackgroundTransparency = 1
+    stat1Label.Text = "0"
+    stat1Label.TextColor3 = Color3.fromRGB(255, 220, 100)
+    stat1Label.Font = Enum.Font.GothamBold
+    stat1Label.TextSize = 24
+    stat1Label.TextXAlignment = Enum.TextXAlignment.Left
+    stat1Label.Parent = statsContainer
     
-    -- Bucks Transferred Icon
-    local transferIcon = Instance.new("TextLabel")
-    transferIcon.Size = UDim2.new(0, 30, 0, 30)
-    transferIcon.Position = UDim2.new(0, 0, 0, 40)
-    transferIcon.BackgroundTransparency = 1
-    transferIcon.Text = "💎"
-    transferIcon.TextSize = 20
-    transferIcon.Parent = statsContainer
+    -- Second Stat Icon
+    local stat2Icon = Instance.new("TextLabel")
+    stat2Icon.Size = UDim2.new(0, 30, 0, 30)
+    stat2Icon.Position = UDim2.new(0, 0, 0, 40)
+    stat2Icon.BackgroundTransparency = 1
+    stat2Icon.Text = "💎"
+    stat2Icon.TextSize = 20
+    stat2Icon.Parent = statsContainer
     
-    -- Bucks Transferred Label
-    local transferLabel = Instance.new("TextLabel")
-    transferLabel.Size = UDim2.new(0, 150, 0, 30)
-    transferLabel.Position = UDim2.new(0, 35, 0, 40)
-    transferLabel.BackgroundTransparency = 1
-    transferLabel.Text = "0"
-    transferLabel.TextColor3 = Color3.fromRGB(255, 100, 150)
-    transferLabel.Font = Enum.Font.GothamBold
-    transferLabel.TextSize = 24
-    transferLabel.TextXAlignment = Enum.TextXAlignment.Left
-    transferLabel.Parent = statsContainer
+    -- Second Stat Label
+    local stat2Label = Instance.new("TextLabel")
+    stat2Label.Size = UDim2.new(0, 150, 0, 30)
+    stat2Label.Position = UDim2.new(0, 35, 0, 40)
+    stat2Label.BackgroundTransparency = 1
+    stat2Label.Text = "0"
+    stat2Label.TextColor3 = Color3.fromRGB(100, 255, 150)
+    stat2Label.Font = Enum.Font.GothamBold
+    stat2Label.TextSize = 24
+    stat2Label.TextXAlignment = Enum.TextXAlignment.Left
+    stat2Label.Parent = statsContainer
     
     -- Timer Label
     local timerLabel = Instance.new("TextLabel")
@@ -281,8 +287,8 @@ local function createUI()
     return {
         gui = screenGui,
         status = statusLabel,
-        bucks = bucksLabel,
-        transferred = transferLabel,
+        stat1 = stat1Label,
+        stat2 = stat2Label,
         timer = timerLabel
     }
 end
@@ -328,25 +334,13 @@ pcall(function()
 end)
 task.wait(5)
 
--- Hide Dialog UI
-hideDialogUI()
+-- Hide Dialog UI (for sender)
+if CONFIG.ROLE == "sender" then
+    hideDialogUI()
+end
 
 -- Create UI
 local ui = createUI()
-
--- ============================================
--- FIND PLAYER
--- ============================================
-
-local function findPlayer(username)
-    local search = username:lower()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Name:lower() == search then
-            return player
-        end
-    end
-    return nil
-end
 
 -- ============================================
 -- TIMER
@@ -368,117 +362,273 @@ spawn(function()
 end)
 
 -- ============================================
--- MAIN SENDER LOGIC
+-- SENDER MODE
 -- ============================================
 
-print("\n💰 STARTING BUCKS TRANSFER")
-
-local initialBucks = getBucks()
-print(string.format("💰 Starting bucks: %d", initialBucks))
-sendWebhook(string.format("🚀 %s - SENDER started with %d bucks\nReceiver: %s", 
-    playerName, initialBucks, CONFIG.RECEIVER_USERNAME))
-
-ui.status.Text = "🔍 Looking for receiver..."
-ui.status.TextColor3 = Color3.fromRGB(255, 220, 100)
-
--- Find receiver
-print(string.format("\n🔍 Looking for receiver: %s", CONFIG.RECEIVER_USERNAME))
-local receiver = findPlayer(CONFIG.RECEIVER_USERNAME)
-
-while not receiver do
-    print("⏳ Receiver not found, waiting...")
-    task.wait(5)
-    receiver = findPlayer(CONFIG.RECEIVER_USERNAME)
-end
-
-print(string.format("✅ Found receiver: %s", receiver.Name))
-ui.status.Text = "✅ Receiver found - Starting transfers..."
-ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
-
-task.wait(2)
-
--- Start buying hotdogs
-print("\n🌭 Starting hotdog purchase loop...")
-sendWebhook(string.format("🌭 %s - Starting hotdog purchases to %s", playerName, receiver.Name))
-
-ui.status.Text = "💸 Transferring bucks..."
-ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
-
-local totalSpent = 0
-local purchaseCount = 0
-local lastWebhookTime = os.time()
-local webhookInterval = 3600 -- 1 hour
-
-while true do
-    local currentBucks = getBucks()
+if CONFIG.ROLE == "sender" then
+    print("\n💰 SENDER MODE - STARTING BUCKS TRANSFER")
     
-    -- Update UI
-    ui.bucks.Text = tostring(currentBucks)
-    ui.transferred.Text = tostring(totalSpent)
+    local function findPlayer(username)
+        local search = username:lower()
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.Name:lower() == search then
+                return player
+            end
+        end
+        return nil
+    end
     
-    -- Buy hotdog
-    print(string.format("\n💸 Buying hotdog... (Bucks: %d)", currentBucks))
+    local initialBucks = getBucks()
+    print(string.format("💰 Starting bucks: %d", initialBucks))
+    sendWebhook(string.format("🚀 %s - SENDER started with %d bucks\nReceiver: %s", 
+        playerName, initialBucks, CONFIG.RECEIVER_USERNAME))
     
-    local buySuccess = pcall(function()
-        ReplicatedStorage:WaitForChild("API"):WaitForChild("PlaceableToolAPI/BuyRefreshment"):InvokeServer(
-            "hotdog_stand",
-            receiver,
-            50  -- Price
-        )
+    ui.status.Text = "🔍 Looking for receiver..."
+    ui.status.TextColor3 = Color3.fromRGB(255, 220, 100)
+    
+    -- Find receiver
+    print(string.format("\n🔍 Looking for receiver: %s", CONFIG.RECEIVER_USERNAME))
+    local receiver = findPlayer(CONFIG.RECEIVER_USERNAME)
+    
+    while not receiver do
+        print("⏳ Receiver not found, waiting...")
+        task.wait(5)
+        receiver = findPlayer(CONFIG.RECEIVER_USERNAME)
+    end
+    
+    print(string.format("✅ Found receiver: %s", receiver.Name))
+    ui.status.Text = "✅ Receiver found - Starting transfers..."
+    ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
+    
+    task.wait(2)
+    
+    -- Start buying hotdogs
+    print("\n🌭 Starting hotdog purchase loop...")
+    sendWebhook(string.format("🌭 %s - Starting hotdog purchases to %s", playerName, receiver.Name))
+    
+    ui.status.Text = "💸 Transferring bucks..."
+    ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
+    
+    local totalSpent = 0
+    local purchaseCount = 0
+    local lastWebhookTime = os.time()
+    local webhookInterval = 3600 -- 1 hour
+    
+    while true do
+        local currentBucks = getBucks()
+        
+        -- Update UI (Bucks Remaining / Bucks Transferred)
+        ui.stat1.Text = tostring(currentBucks)
+        ui.stat2.Text = tostring(totalSpent)
+        
+        -- Buy hotdog
+        print(string.format("\n💸 Buying hotdog... (Bucks: %d)", currentBucks))
+        
+        local buySuccess = pcall(function()
+            ReplicatedStorage:WaitForChild("API"):WaitForChild("PlaceableToolAPI/BuyRefreshment"):InvokeServer(
+                "hotdog_stand",
+                receiver,
+                50  -- Price
+            )
+        end)
+        
+        if buySuccess then
+            print("✅ Purchase sent!")
+        else
+            print("❌ Purchase failed!")
+        end
+        
+        -- Wait and check if bucks decreased
+        task.wait(2)
+        hideDialogUI()
+        
+        local newBucks = getBucks()
+        
+        if newBucks < currentBucks then
+            local spent = currentBucks - newBucks
+            totalSpent = totalSpent + spent
+            purchaseCount = purchaseCount + 1
+            
+            print(string.format("✅ Hotdog bought! Spent: %d | Total spent: %d | Remaining: %d", 
+                spent, totalSpent, newBucks))
+            
+            -- Update UI
+            ui.stat1.Text = tostring(newBucks)
+            ui.stat2.Text = tostring(totalSpent)
+        else
+            print("⚠️ Bucks didn't decrease, purchase may have failed")
+        end
+        
+        -- Webhook every hour
+        if os.time() - lastWebhookTime >= webhookInterval then
+            local remaining = getBucks()
+            sendWebhook(string.format("📊 %s - HOURLY UPDATE\nBucks remaining: %d\nTotal transferred: %d\nPurchases: %d", 
+                playerName, remaining, totalSpent, purchaseCount))
+            lastWebhookTime = os.time()
+        end
+        
+        -- Check if out of bucks
+        if newBucks < 50 then
+            print("\n⚠️ Not enough bucks for another purchase!")
+            ui.status.Text = "⚠️ Out of bucks!"
+            ui.status.TextColor3 = Color3.fromRGB(255, 100, 100)
+            
+            sendWebhook(string.format("⚠️ %s - OUT OF BUCKS!\nRemaining: %d\nTotal transferred: %d\nPurchases: %d", 
+                playerName, newBucks, totalSpent, purchaseCount))
+            break
+        end
+        
+        task.wait(2)  -- Wait 2 seconds before next purchase
+    end
+    
+    print("\n✅ TRANSFER COMPLETE!")
+    print(string.format("Total transferred: %d bucks", totalSpent))
+    print(string.format("Total purchases: %d", purchaseCount))
+    
+    ui.status.Text = "✅ Transfer complete!"
+    ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
+
+-- ============================================
+-- RECEIVER MODE
+-- ============================================
+
+elseif CONFIG.ROLE == "receiver" then
+    print("\n📥 RECEIVER MODE - SETTING UP HOTDOG STAND")
+    
+    -- Get hotdog stand from inventory
+    print("\n🌭 Finding hotdog stand in inventory...")
+    ui.status.Text = "🔍 Finding hotdog stand..."
+    
+    local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
+    local hotdogStandUnique = nil
+    
+    pcall(function()
+        local playerData = Data.get_data()[playerName]
+        if playerData and playerData.inventory and playerData.inventory.toys then
+            for _, item in pairs(playerData.inventory.toys) do
+                if item.kind == "hotdog_stand" then
+                    hotdogStandUnique = item.unique
+                    print(string.format("✅ Found hotdog stand: %s", hotdogStandUnique))
+                    break
+                end
+            end
+        end
     end)
     
-    if buySuccess then
-        print("✅ Purchase sent!")
-    else
-        print("❌ Purchase failed!")
-    end
-    
-    -- Wait and check if bucks decreased
-    task.wait(2)
-    hideDialogUI()
-    
-    local newBucks = getBucks()
-    
-    if newBucks < currentBucks then
-        local spent = currentBucks - newBucks
-        totalSpent = totalSpent + spent
-        purchaseCount = purchaseCount + 1
-        
-        print(string.format("✅ Hotdog bought! Spent: %d | Total spent: %d | Remaining: %d", 
-            spent, totalSpent, newBucks))
-        
-        -- Update UI
-        ui.bucks.Text = tostring(newBucks)
-        ui.transferred.Text = tostring(totalSpent)
-    else
-        print("⚠️ Bucks didn't decrease, purchase may have failed")
-    end
-    
-    -- Webhook every hour
-    if os.time() - lastWebhookTime >= webhookInterval then
-        local remaining = getBucks()
-        sendWebhook(string.format("📊 %s - HOURLY UPDATE\nBucks remaining: %d\nTotal transferred: %d\nPurchases: %d", 
-            playerName, remaining, totalSpent, purchaseCount))
-        lastWebhookTime = os.time()
-    end
-    
-    -- Check if out of bucks
-    if newBucks < 50 then
-        print("\n⚠️ Not enough bucks for another purchase!")
-        ui.status.Text = "⚠️ Out of bucks!"
+    if not hotdogStandUnique then
+        print("❌ No hotdog stand found in inventory!")
+        ui.status.Text = "❌ No hotdog stand found!"
         ui.status.TextColor3 = Color3.fromRGB(255, 100, 100)
-        
-        sendWebhook(string.format("⚠️ %s - OUT OF BUCKS!\nRemaining: %d\nTotal transferred: %d\nPurchases: %d", 
-            playerName, newBucks, totalSpent, purchaseCount))
-        break
+        sendWebhook(string.format("❌ %s - No hotdog stand found!", playerName))
+        error("No hotdog stand in inventory!")
     end
     
-    task.wait(2)  -- Wait 2 seconds before next purchase
+    -- Equip hotdog stand
+    print("\n🛠️ Equipping hotdog stand...")
+    ui.status.Text = "🛠️ Equipping hotdog stand..."
+    
+    local equipSuccess = pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(hotdogStandUnique, {
+            use_sound_delay = true,
+            equip_as_last = false
+        })
+    end)
+    
+    if equipSuccess then
+        print("✅ Hotdog stand equipped!")
+    else
+        print("⚠️ Equip may have failed")
+    end
+    
+    task.wait(2)
+    
+    -- Place hotdog stand
+    print("\n📍 Placing hotdog stand...")
+    ui.status.Text = "📍 Placing hotdog stand..."
+    
+    local placeCFrame = CFrame.new(2762.859619140625, 6525.97998046875, -9044.9541015625, 
+        0.8452085256576538, -3.089855482585335e-08, -0.5344367027282715, 
+        -3.6486987653461256e-08, 1, -1.1551914269603003e-07, 
+        0.5344367027282715, 1.1713775194266418e-07, 0.8452085256576538)
+    
+    local placeSuccess = pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PlaceableToolAPI/CreatePlaceable"):InvokeServer(placeCFrame)
+    end)
+    
+    if placeSuccess then
+        print("✅ Hotdog stand placed!")
+    else
+        print("❌ Failed to place hotdog stand")
+        ui.status.Text = "❌ Failed to place stand!"
+        ui.status.TextColor3 = Color3.fromRGB(255, 100, 100)
+        sendWebhook(string.format("❌ %s - Failed to place hotdog stand!", playerName))
+    end
+    
+    task.wait(2)
+    
+    -- Set price to 50
+    print("\n💰 Setting price to 50 bucks...")
+    ui.status.Text = "💰 Setting price to 50..."
+    
+    local priceSuccess = pcall(function()
+        ReplicatedStorage:WaitForChild("API"):WaitForChild("PlaceableToolAPI/SetRefreshmentPrice"):InvokeServer("hotdog_stand", 50)
+    end)
+    
+    if priceSuccess then
+        print("✅ Price set to 50 bucks!")
+        ui.status.Text = "✅ Stand ready - Waiting for sales..."
+        ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
+        sendWebhook(string.format("✅ %s - Hotdog stand placed and price set to 50!", playerName))
+    else
+        print("❌ Failed to set price")
+        ui.status.Text = "⚠️ Price setting failed"
+        ui.status.TextColor3 = Color3.fromRGB(255, 220, 100)
+    end
+    
+    task.wait(2)
+    
+    -- Monitor bucks
+    print("\n💰 Monitoring bucks...")
+    
+    local initialBucks = getBucks()
+    local lastBucks = initialBucks
+    local totalEarned = 0
+    local lastWebhookTime = os.time()
+    local webhookInterval = 3600 -- 1 hour
+    
+    sendWebhook(string.format("📥 %s - RECEIVER started with %d bucks\nStand placed and ready!", 
+        playerName, initialBucks))
+    
+    -- Monitor loop
+    while true do
+        task.wait(3)
+        
+        local currentBucks = getBucks()
+        
+        -- Update UI (Current Bucks / Total Earned)
+        ui.stat1.Text = tostring(currentBucks)
+        ui.stat2.Text = tostring(totalEarned)
+        
+        -- Check if earned
+        if currentBucks > lastBucks then
+            local earned = currentBucks - lastBucks
+            totalEarned = totalEarned + earned
+            
+            print(string.format("💰 +%d bucks! Total: %d | Total earned: %d", earned, currentBucks, totalEarned))
+            
+            -- Update UI
+            ui.stat2.Text = tostring(totalEarned)
+            
+            lastBucks = currentBucks
+        end
+        
+        -- Webhook every hour
+        if os.time() - lastWebhookTime >= webhookInterval then
+            sendWebhook(string.format("📊 %s - HOURLY UPDATE\nCurrent bucks: %d\nTotal earned: %d", 
+                playerName, currentBucks, totalEarned))
+            lastWebhookTime = os.time()
+        end
+    end
 end
 
-print("\n✅ TRANSFER COMPLETE!")
-print(string.format("Total transferred: %d bucks", totalSpent))
-print(string.format("Total purchases: %d", purchaseCount))
-
-ui.status.Text = "✅ Transfer complete!"
-ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
+print("\n✅ SCRIPT COMPLETE!")
