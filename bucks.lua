@@ -389,6 +389,11 @@ end)
 if CONFIG.ROLE == "sender" then
     print("\n💰 SENDER MODE - STARTING BUCKS TRANSFER")
 
+    -- Shared claim table across all script instances in this executor session
+    if not _G.ClaimedReceivers then
+        _G.ClaimedReceivers = {}
+    end
+
     -- Find a player by username (case-insensitive)
     local function findPlayer(username)
         local search = username:lower()
@@ -400,15 +405,24 @@ if CONFIG.ROLE == "sender" then
         return nil
     end
 
-    -- Find the first receiver that is currently in the game
-    local function findAnyReceiver()
+    -- Find an unclaimed receiver that is currently in the game
+    local function claimReceiver()
         for _, username in ipairs(CONFIG.RECEIVER_USERNAME) do
-            local player = findPlayer(username)
-            if player then
-                return player
+            local lname = username:lower()
+            if not _G.ClaimedReceivers[lname] then
+                local player = findPlayer(username)
+                if player then
+                    _G.ClaimedReceivers[lname] = playerName  -- claim it
+                    return player
+                end
             end
         end
         return nil
+    end
+
+    -- Release claim on a receiver (e.g. they left)
+    local function releaseReceiver(username)
+        _G.ClaimedReceivers[username:lower()] = nil
     end
 
     local receiverListStr = table.concat(CONFIG.RECEIVER_USERNAME, ", ")
@@ -418,21 +432,21 @@ if CONFIG.ROLE == "sender" then
     sendWebhook(string.format("🚀 %s - SENDER started with %d bucks\nReceiver list: %s",
         playerName, initialBucks, receiverListStr))
 
-    ui.status.Text = "🔍 Looking for a receiver..."
+    ui.status.Text = "🔍 Claiming a receiver..."
     ui.status.TextColor3 = Color3.fromRGB(255, 220, 100)
 
-    -- Wait until at least one receiver is found
-    print(string.format("\n🔍 Waiting for any receiver from: %s", receiverListStr))
-    local receiver = findAnyReceiver()
+    -- Wait until we can claim an unclaimed receiver
+    print(string.format("\n🔍 Waiting for an unclaimed receiver from: %s", receiverListStr))
+    local receiver = claimReceiver()
 
     while not receiver do
-        print("⏳ No receivers in game, waiting...")
+        print("⏳ No unclaimed receivers available, waiting...")
         task.wait(5)
-        receiver = findAnyReceiver()
+        receiver = claimReceiver()
     end
 
-    print(string.format("✅ Found receiver: %s", receiver.Name))
-    ui.status.Text = "✅ Receiver found - Starting transfers..."
+    print(string.format("✅ Claimed receiver: %s", receiver.Name))
+    ui.status.Text = "✅ Receiver claimed - Starting transfers..."
     ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
     ui.receiver.Text = "👤 Sending to: " .. receiver.Name
 
@@ -456,25 +470,26 @@ if CONFIG.ROLE == "sender" then
         ui.stat1.Text = tostring(currentBucks)
         ui.stat2.Text = tostring(totalSpent)
 
-        -- Re-check if current receiver is still in game; switch if not
+        -- Re-check if current receiver is still in game; release & reclaim if not
         if not findPlayer(receiver.Name) then
-            print(string.format("⚠️ Receiver %s left the game! Looking for another...", receiver.Name))
+            print(string.format("⚠️ Receiver %s left! Releasing claim and searching...", receiver.Name))
+            releaseReceiver(receiver.Name)
             ui.status.Text = "⚠️ Receiver left! Searching..."
             ui.status.TextColor3 = Color3.fromRGB(255, 165, 0)
             ui.receiver.Text = "👤 Sending to: —"
 
             local newReceiver = nil
             while not newReceiver do
-                newReceiver = findAnyReceiver()
+                newReceiver = claimReceiver()
                 if not newReceiver then
-                    print("⏳ No receivers in game, waiting...")
+                    print("⏳ No unclaimed receivers available, waiting...")
                     task.wait(5)
                 end
             end
 
             receiver = newReceiver
-            print(string.format("✅ Switched to receiver: %s", receiver.Name))
-            sendWebhook(string.format("🔄 %s - Switched receiver to: %s", playerName, receiver.Name))
+            print(string.format("✅ Claimed new receiver: %s", receiver.Name))
+            sendWebhook(string.format("🔄 %s - Switched to new receiver: %s", playerName, receiver.Name))
             ui.status.Text = "💸 Transferring bucks..."
             ui.status.TextColor3 = Color3.fromRGB(100, 255, 100)
             ui.receiver.Text = "👤 Sending to: " .. receiver.Name
@@ -532,6 +547,7 @@ if CONFIG.ROLE == "sender" then
             ui.status.Text = "⚠️ Out of bucks!"
             ui.status.TextColor3 = Color3.fromRGB(255, 100, 100)
 
+            releaseReceiver(receiver.Name)  -- free up the receiver for other senders
             sendWebhook(string.format("⚠️ %s - OUT OF BUCKS!\nRemaining: %d\nTotal transferred: %d\nPurchases: %d",
                 playerName, newBucks, totalSpent, purchaseCount))
             break
