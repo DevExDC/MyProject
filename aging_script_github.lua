@@ -1,6 +1,7 @@
 -- ============================================
 -- SMART AGING SCRIPT V2 - MULTI-PET SUPPORT
 -- + FarmSync Auto-Disable
+-- + AccountOps Auto-Disable
 -- Pet resolved by name (resolveItem)
 -- Supports multiple pet names with fallback
 -- Friend's entry logic + UI disable
@@ -20,23 +21,29 @@ if not getgenv().AgingConfig then
         -- PET_NAME = "Christmas Spirit",
         
         WEBHOOK_URL = "",
-        FARMSYNC_API_KEY = "",  -- Your FarmSync API key
-        FARMSYNC_AUTO_DISABLE = false,  -- true = auto-disable account when done
+
+        -- FarmSync (optional, leave "" to skip)
+        FARMSYNC_API_KEY = "",
+        FARMSYNC_AUTO_DISABLE = false,  -- true = auto-disable when done
+
+        -- AccountOps (optional, leave "" to skip)
+        ACCOUNTOPS_API_KEY = "",
+        ACCOUNTOPS_AUTO_DISABLE = false,  -- true = auto-disable when done
     }
 end
 
 local CONFIG = getgenv().AgingConfig
 
 -- Default settings
-if CONFIG.PET_DELAY == nil then CONFIG.PET_DELAY = 5 end  -- Delay between pets (seconds)
-if CONFIG.DEBUG_LOGGING == nil then CONFIG.DEBUG_LOGGING = true end  -- Send detailed logs to webhook
+if CONFIG.PET_DELAY == nil then CONFIG.PET_DELAY = 5 end
+if CONFIG.DEBUG_LOGGING == nil then CONFIG.DEBUG_LOGGING = true end
 
--- Hardcoded aging settings (no need to configure)
+-- Hardcoded aging settings
 local MAX_AGE_RETRIES = 5
 local AGE_VERIFY_WAIT = 3
 
 -- ============================================
--- SERVICES (Early init for FarmSync)
+-- SERVICES (Early init)
 -- ============================================
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -44,26 +51,26 @@ local LocalPlayer = Players.LocalPlayer
 local request = (syn and syn.request) or (http and http.request) or http_request
 
 -- ============================================
--- FARMSYNC API DISABLE FUNCTION
+-- FARMSYNC DISABLE FUNCTION
 -- ============================================
 local function disable_farmsync_account()
-    if not CONFIG.FARMSYNC_AUTO_DISABLE then 
+    if not CONFIG.FARMSYNC_AUTO_DISABLE then
         print("ℹ️ FarmSync auto-disable is OFF")
-        return 
+        return
     end
-    
+
     if not CONFIG.FARMSYNC_API_KEY or CONFIG.FARMSYNC_API_KEY == "" then
         print("⚠️ FarmSync API key not set, skipping disable")
         return
     end
-    
+
     if not request then
         print("❌ HTTP request function not available")
         return
     end
-    
+
     print("\n🔴 Disabling FarmSync account...")
-    
+
     local success, response = pcall(function()
         return request({
             Url = "https://api.farmsync.cloud/api/self/accounts/" .. LocalPlayer.Name,
@@ -72,15 +79,12 @@ local function disable_farmsync_account()
                 ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
                 ["Content-Type"] = "application/json"
             },
-            Body = HttpService:JSONEncode({
-                enabled = false
-            })
+            Body = HttpService:JSONEncode({ enabled = false })
         })
     end)
 
     if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
-        print("✅ FarmSync account disabled successfully! (Status: " .. response.StatusCode .. ")")
-        
+        print("✅ FarmSync account disabled! (Status: " .. response.StatusCode .. ")")
         if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
             pcall(function()
                 request({
@@ -95,8 +99,7 @@ local function disable_farmsync_account()
         end
     else
         local err = response and response.StatusCode or "unknown error"
-        print("❌ Failed to disable FarmSync account: " .. tostring(err))
-        
+        print("❌ Failed to disable FarmSync: " .. tostring(err))
         if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
             pcall(function()
                 request({
@@ -110,6 +113,82 @@ local function disable_farmsync_account()
             end)
         end
     end
+end
+
+-- ============================================
+-- ACCOUNTOPS DISABLE FUNCTION
+-- ============================================
+local function disable_accountops_account()
+    if not CONFIG.ACCOUNTOPS_AUTO_DISABLE then
+        print("ℹ️ AccountOps auto-disable is OFF")
+        return
+    end
+
+    if not CONFIG.ACCOUNTOPS_API_KEY or CONFIG.ACCOUNTOPS_API_KEY == "" then
+        print("⚠️ AccountOps API key not set, skipping disable")
+        return
+    end
+
+    if not request then
+        print("❌ HTTP request function not available")
+        return
+    end
+
+    print("\n🔴 Disabling AccountOps account...")
+
+    local success, response = pcall(function()
+        return request({
+            Url = "https://accountops.org/api/accounts/enable",
+            Method = "PUT",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["X-Api-Key"]    = CONFIG.ACCOUNTOPS_API_KEY
+            },
+            Body = HttpService:JSONEncode({
+                usernames = { LocalPlayer.Name },
+                enabled   = false
+            })
+        })
+    end)
+
+    if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
+        print("✅ AccountOps account disabled! (Status: " .. response.StatusCode .. ")")
+        if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
+            pcall(function()
+                request({
+                    Url = CONFIG.WEBHOOK_URL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = HttpService:JSONEncode({
+                        content = string.format("✅ %s - AccountOps account disabled (Status %d)", LocalPlayer.Name, response.StatusCode)
+                    })
+                })
+            end)
+        end
+    else
+        local err = response and response.StatusCode or "unknown error"
+        print("❌ Failed to disable AccountOps: " .. tostring(err))
+        if CONFIG.WEBHOOK_URL and CONFIG.WEBHOOK_URL ~= "" then
+            pcall(function()
+                request({
+                    Url = CONFIG.WEBHOOK_URL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = HttpService:JSONEncode({
+                        content = string.format("❌ %s - Failed to disable AccountOps (%s)", LocalPlayer.Name, tostring(err))
+                    })
+                })
+            end)
+        end
+    end
+end
+
+-- ============================================
+-- MASTER DISABLE (calls both if configured)
+-- ============================================
+local function disable_all_accounts()
+    disable_farmsync_account()
+    disable_accountops_account()
 end
 
 -- ============================================
@@ -193,10 +272,7 @@ local function findAndSelectPet()
             print(string.format("  %d. %s", i, name))
         end
         
-        if CONFIG.FARMSYNC_AUTO_DISABLE then
-            print("\n🔴 Auto-disabling FarmSync account...")
-            disable_farmsync_account()
-        end
+        disable_all_accounts()
         
         print("\n❌ Exiting script - No pets available")
         
@@ -421,6 +497,7 @@ print("  SMART AGING SYSTEM V2")
 print("  + Multi-pet support with fallback")
 print("  + Pet resolved by name")
 print("  + FarmSync auto-disable")
+print("  + AccountOps auto-disable")
 print("  + Kicks game when done")
 print("===========================================")
 print("Pet Name:     " .. CONFIG.PET_NAME)
@@ -428,6 +505,7 @@ print("Pet Kind:     " .. CONFIG.PET_KIND)
 print("Rarity:       " .. CONFIG.RARITY)
 print("Potions/pet:  " .. potions_per_pet)
 print("FarmSync:     " .. (CONFIG.FARMSYNC_AUTO_DISABLE and "Auto-disable ON" or "OFF"))
+print("AccountOps:   " .. (CONFIG.ACCOUNTOPS_AUTO_DISABLE and "Auto-disable ON" or "OFF"))
 print("===========================================")
 print("✅ Ready to start!")
 
@@ -619,9 +697,6 @@ end
 
 -- ============================================
 -- EQUIP PET
--- Just fires the equip remote and waits.
--- No verification needed — this game manages
--- pets server-side and equip always works.
 -- ============================================
 local function equip_pet(pet_unique)
     logDebug(string.format("🔧 Equipping pet: %s", pet_unique))
@@ -637,7 +712,7 @@ local function equip_pet(pet_unique)
 
         if success then
             logEvent(string.format("✅ Equip call sent on attempt %d", attempt))
-            task.wait(2)  -- Wait for server to register
+            task.wait(2)
             return true
         else
             logError(string.format("⚠️ Equip call failed on attempt %d, retrying...", attempt))
@@ -821,7 +896,7 @@ local function run_aging()
     if total_pets == 0 then
         print("\n❌ NO PETS OF TYPE: " .. CONFIG.PET_KIND)
         sendWebhook(string.format("❌ %s - No %s pets found, kicking.", playerName, CONFIG.PET_KIND))
-        disable_farmsync_account()
+        disable_all_accounts()
         task.wait(3)
         LocalPlayer:Kick("No pets found — done!")
         return
@@ -832,7 +907,7 @@ local function run_aging()
     if total_potions == 0 then
         print("\n❌ NO AGE POTIONS")
         sendWebhook(string.format("❌ %s - No potions, kicking.", playerName))
-        disable_farmsync_account()
+        disable_all_accounts()
         task.wait(3)
         LocalPlayer:Kick("No potions — done!")
         return
@@ -1027,7 +1102,7 @@ local function run_aging()
     sendWebhook(string.format("✅ %s - COMPLETE\nAged: %d | Failed: %d | Neons: %d | Megas: %d\nRemaining potions: %d",
         playerName, total_aged, total_failed, total_neons, total_megas, final_potions))
 
-    disable_farmsync_account()
+    disable_all_accounts()
 
     print("\n🔴 Aging done — kicking in 5s...")
     task.wait(5)
