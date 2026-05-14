@@ -5,14 +5,23 @@
     
     CONFIG (set BEFORE running):
     getgenv().Config = {
-        farmsync_api_key = "your_key_here",
-        username         = "YourMainAccount",
-        pet_names        = {"Corgi", "Robot", "Swordfish"},  -- auto-detects category
-        neon_only        = false,  -- true = trade neon pets only (excludes megas)
-        mega_only        = false,  -- true = trade mega neon pets only
-        full_grown_only  = false,  -- true = age 6 pets only
-        webhook          = "",     -- optional, leave "" to disable
+        -- FarmSync (optional)
+        farmsync_api_key    = "your_farmsync_key_here",
+
+        -- AccountOps (optional)
+        accountops_api_key  = "ak_your_accountops_key_here",
+
+        username            = "YourMainAccount",
+        pet_names           = {"Corgi", "Robot", "Swordfish"},  -- auto-detects category
+        neon_only           = false,  -- true = trade neon pets only (excludes megas)
+        mega_only           = false,  -- true = trade mega neon pets only
+        full_grown_only     = false,  -- true = age 6 pets only
+        webhook             = "",     -- optional Discord webhook, leave "" to disable
     }
+
+    NOTE: You can use farmsync_api_key, accountops_api_key, or BOTH.
+          If both are set, both services will attempt to disable the account.
+          If neither is set, auto-disable is skipped.
 ]]
 
 repeat wait() until game:IsLoaded()
@@ -31,13 +40,14 @@ if not CONFIG then
     error("No config! Set getgenv().Config before running.")
 end
 
-local FARMSYNC_API_KEY = CONFIG.farmsync_api_key or ""
-local USERNAME         = CONFIG.username          or ""
-local PET_NAMES        = CONFIG.pet_names         or (CONFIG.pet_name and {CONFIG.pet_name}) or {}
-local WEBHOOK_URL      = CONFIG.webhook           or ""
-local NEON_ONLY        = CONFIG.neon_only         or false
-local MEGA_ONLY        = CONFIG.mega_only         or false
-local FULL_GROWN_ONLY  = CONFIG.full_grown_only   or false
+local FARMSYNC_API_KEY     = CONFIG.farmsync_api_key     or ""
+local ACCOUNTOPS_API_KEY   = CONFIG.accountops_api_key   or ""
+local USERNAME             = CONFIG.username             or ""
+local PET_NAMES            = CONFIG.pet_names            or (CONFIG.pet_name and {CONFIG.pet_name}) or {}
+local WEBHOOK_URL          = CONFIG.webhook              or ""
+local NEON_ONLY            = CONFIG.neon_only            or false
+local MEGA_ONLY            = CONFIG.mega_only            or false
+local FULL_GROWN_ONLY      = CONFIG.full_grown_only      or false
 
 if USERNAME == "" then error("No username set in config!") end
 if #PET_NAMES == 0 then error("No pet_names set in config!") end
@@ -315,9 +325,11 @@ UI_TradeCount.Font=Enum.Font.GothamBold; UI_TradeCount.ZIndex=4; UI_TradeCount.P
 
 -- Filter pills
 local pillData = {}
-if MEGA_ONLY       then table.insert(pillData, {"MEGA ONLY",   Color3.fromRGB(21,101,192), Color3.fromRGB(227,242,253)}) end
-if NEON_ONLY       then table.insert(pillData, {"NEON ONLY",   Color3.fromRGB(21,101,192), Color3.fromRGB(227,242,253)}) end
-if FULL_GROWN_ONLY then table.insert(pillData, {"FULL GROWN",  Color3.fromRGB(173,20,87),  Color3.fromRGB(252,228,236)}) end
+if MEGA_ONLY         then table.insert(pillData, {"MEGA ONLY",    Color3.fromRGB(21,101,192),  Color3.fromRGB(227,242,253)}) end
+if NEON_ONLY         then table.insert(pillData, {"NEON ONLY",    Color3.fromRGB(21,101,192),  Color3.fromRGB(227,242,253)}) end
+if FULL_GROWN_ONLY   then table.insert(pillData, {"FULL GROWN",   Color3.fromRGB(173,20,87),   Color3.fromRGB(252,228,236)}) end
+if FARMSYNC_API_KEY ~= "" then table.insert(pillData, {"FARMSYNC",  Color3.fromRGB(46,125,50), Color3.fromRGB(232,245,233)}) end
+if ACCOUNTOPS_API_KEY ~= "" then table.insert(pillData, {"ACCOUNTOPS", Color3.fromRGB(100,60,150), Color3.fromRGB(240,230,255)}) end
 table.insert(pillData, {"AUTO DISABLE", Color3.fromRGB(46,125,50), Color3.fromRGB(232,245,233)})
 local pillX = 20
 for _, p in ipairs(pillData) do
@@ -385,11 +397,17 @@ local function sendWebhook(msg)
     end)
 end
 
-local function disableAccount()
+-- ============================================
+-- DISABLE ACCOUNT FUNCTIONS
+-- ============================================
+
+-- FarmSync: PUT /api/self/accounts/{username}  { enabled: false }
+local function disableViaFarmSync()
     if FARMSYNC_API_KEY == "" then
-        log("No API key - skipping auto-disable")
+        log("[FarmSync] No API key — skipping")
         return
     end
+    log("[FarmSync] Disabling account...")
     local success, response = pcall(function()
         return request({
             Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
@@ -402,13 +420,55 @@ local function disableAccount()
         })
     end)
     if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
-        log("Account disabled via FarmSync!")
-        sendWebhook("Account disabled successfully.")
+        log("[FarmSync] Account disabled successfully!")
+        sendWebhook("[FarmSync] Account disabled successfully.")
     else
         local err = response and response.StatusCode or "unknown"
-        warn("Failed to disable account: " .. tostring(err))
-        sendWebhook("Failed to disable account (" .. tostring(err) .. ")")
+        warn("[FarmSync] Failed to disable account: " .. tostring(err))
+        sendWebhook("[FarmSync] Failed to disable account (" .. tostring(err) .. ")")
     end
+end
+
+-- AccountOps: PUT https://accountops.org/api/accounts/enable  { usernames: [username], enabled: false }
+local function disableViaAccountOps()
+    if ACCOUNTOPS_API_KEY == "" then
+        log("[AccountOps] No API key — skipping")
+        return
+    end
+    log("[AccountOps] Disabling account...")
+    local success, response = pcall(function()
+        return request({
+            Url     = "https://accountops.org/api/accounts/enable",
+            Method  = "PUT",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["X-Api-Key"]    = ACCOUNTOPS_API_KEY
+            },
+            Body = HttpService:JSONEncode({
+                usernames = { playerName },
+                enabled   = false
+            })
+        })
+    end)
+    if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
+        log("[AccountOps] Account disabled successfully!")
+        sendWebhook("[AccountOps] Account disabled successfully.")
+    else
+        local err = response and response.StatusCode or "unknown"
+        warn("[AccountOps] Failed to disable account: " .. tostring(err))
+        sendWebhook("[AccountOps] Failed to disable account (" .. tostring(err) .. ")")
+    end
+end
+
+-- Master disable — runs whichever services are configured (both if both keys set)
+local function disableAccount()
+    local anyConfigured = FARMSYNC_API_KEY ~= "" or ACCOUNTOPS_API_KEY ~= ""
+    if not anyConfigured then
+        log("No disable service configured (no farmsync_api_key or accountops_session) — skipping auto-disable")
+        return
+    end
+    disableViaFarmSync()
+    disableViaAccountOps()
 end
 
 -- ============================================
@@ -429,7 +489,7 @@ local function petPassesFilter(item)
     elseif NEON_ONLY then
         return is_neon == true and not is_mega
     else
-        return true -- both false = trade everything (normal, neon, mega)
+        return true
     end
 end
 
@@ -466,6 +526,8 @@ log("Account  : " .. playerName)
 log("Main acc : " .. USERNAME)
 log("Pets     : " .. table.concat(PET_NAMES, ", "))
 log("Filter   : " .. filterMode)
+log("FarmSync : " .. (FARMSYNC_API_KEY ~= "" and "ENABLED" or "disabled"))
+log("AccOps   : " .. (ACCOUNTOPS_API_KEY ~= "" and "ENABLED" or "disabled"))
 log("================================")
 
 local resolvedPets = {}  -- { kind, category }
@@ -617,7 +679,7 @@ until #items_unique_ids == 0
 
 log("================================")
 log("ALL DONE! " .. tradeCount .. " trades completed.")
-log("Disabling account via FarmSync...")
+log("Disabling account via configured services...")
 log("================================")
 
 sendWebhook("All trades done! " .. tradeCount .. " trades completed. Disabling account now.")
