@@ -1,15 +1,24 @@
 -- ============================================
 -- RECEIVER - WITH SMART SERVER STATUS
 -- Only checks server when holder reports out of pets
+-- + FarmSync Auto-Disable
+-- + AccountOps Auto-Disable
 -- ============================================
 
 if not getgenv().ReceiverConfig then
     getgenv().ReceiverConfig = {
-        PC_SERVER_URL    = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
-        WEBHOOK_URL      = "",
-        RARITY           = "legendary",
-        PET_KIND         = "winter_2025_christmas_spirit",
-        FARMSYNC_API_KEY = ""
+        PC_SERVER_URL       = "https://spinelike-lenora-unmovingly.ngrok-free.dev/request",
+        WEBHOOK_URL         = "",
+        RARITY              = "legendary",
+        PET_KIND            = "winter_2025_christmas_spirit",
+
+        -- FarmSync (optional, leave "" to skip)
+        FARMSYNC_API_KEY    = "",
+        FARMSYNC_AUTO_DISABLE = false,
+
+        -- AccountOps (optional, leave "" to skip)
+        ACCOUNTOPS_API_KEY  = "",
+        ACCOUNTOPS_AUTO_DISABLE = false,
     }
 end
 
@@ -43,6 +52,8 @@ end
 print("===========================================")
 print("  RECEIVER - SMART SERVER STATUS")
 print("  Checks server for holder status")
+print("  FarmSync:   " .. (CONFIG.FARMSYNC_AUTO_DISABLE and "Auto-disable ON" or "OFF"))
+print("  AccountOps: " .. (CONFIG.ACCOUNTOPS_AUTO_DISABLE and "Auto-disable ON" or "OFF"))
 print("===========================================")
 
 repeat task.wait() until game:IsLoaded()
@@ -54,6 +65,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService       = game:GetService("HttpService")
 local LocalPlayer       = Players.LocalPlayer
 local playerName        = LocalPlayer.Name
+local request           = (syn and syn.request) or (http and http.request) or http_request
 
 -- ============== ANTI-AFK ==============
 local VirtualUser = game:GetService("VirtualUser")
@@ -64,13 +76,12 @@ end)
 print("✅ Anti-AFK enabled")
 
 -- ============================================
--- DEHASH (fixed: auto-scans upvalues 1-30)
+-- DEHASH
 -- ============================================
 print("🔧 Dehashing remotes...")
 local function dehash()
     local router = require(ReplicatedStorage.ClientModules.Core.RouterClient.RouterClient)
     local fn = router.init
-
     for i = 1, 30 do
         local ok, val = pcall(debug.getupvalue, fn, i)
         if ok and type(val) == "table" then
@@ -90,13 +101,85 @@ local function dehash()
             end
         end
     end
-
     warn("[Dehash] Failed — no remote table found in upvalues")
 end
 dehash()
 print("✅ Remotes dehashed!")
 
--- ============== NO SPAWNING! ==============
+-- ============================================
+-- DISABLE FUNCTIONS
+-- ============================================
+
+local function disableViaFarmSync()
+    if not CONFIG.FARMSYNC_AUTO_DISABLE then
+        print("ℹ️ FarmSync auto-disable is OFF")
+        return
+    end
+    if not CONFIG.FARMSYNC_API_KEY or CONFIG.FARMSYNC_API_KEY == "" then
+        print("⚠️ FarmSync API key not set, skipping")
+        return
+    end
+    print("🔴 Disabling via FarmSync...")
+    local success, response = pcall(function()
+        return request({
+            Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
+            Method  = "PUT",
+            Headers = {
+                ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
+                ["Content-Type"]  = "application/json",
+            },
+            Body = HttpService:JSONEncode({ enabled = false })
+        })
+    end)
+    if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
+        print("✅ FarmSync account disabled! (Status: " .. response.StatusCode .. ")")
+    else
+        local err = response and response.StatusCode or "unknown"
+        warn("❌ FarmSync disable failed: " .. tostring(err))
+    end
+end
+
+local function disableViaAccountOps()
+    if not CONFIG.ACCOUNTOPS_AUTO_DISABLE then
+        print("ℹ️ AccountOps auto-disable is OFF")
+        return
+    end
+    if not CONFIG.ACCOUNTOPS_API_KEY or CONFIG.ACCOUNTOPS_API_KEY == "" then
+        print("⚠️ AccountOps API key not set, skipping")
+        return
+    end
+    print("🔴 Disabling via AccountOps...")
+    local success, response = pcall(function()
+        return request({
+            Url     = "https://accountops.org/api/accounts/enable",
+            Method  = "PUT",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["X-Api-Key"]    = CONFIG.ACCOUNTOPS_API_KEY,
+            },
+            Body = HttpService:JSONEncode({
+                usernames = { playerName },
+                enabled   = false
+            })
+        })
+    end)
+    if success and response and response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
+        print("✅ AccountOps account disabled! (Status: " .. response.StatusCode .. ")")
+    else
+        local err = response and response.StatusCode or "unknown"
+        warn("❌ AccountOps disable failed: " .. tostring(err))
+    end
+end
+
+local function disableAccount()
+    disableViaFarmSync()
+    disableViaAccountOps()
+end
+
+-- ============================================
+-- UTILITIES
+-- ============================================
+
 print("⚠️ NOT spawning - waiting for trades without spawn!")
 
 local Data = require(ReplicatedStorage.ClientModules.Core.ClientData)
@@ -120,10 +203,10 @@ end
 local function post_to_pc_server(potions, pets_needed)
     pcall(function()
         local data = {
-            username   = playerName,
-            potions    = potions,
+            username    = playerName,
+            potions     = potions,
             pets_needed = pets_needed,
-            rarity     = CONFIG.RARITY,
+            rarity      = CONFIG.RARITY,
         }
 
         print("\n📡 Sending request to PC server...")
@@ -141,24 +224,8 @@ local function post_to_pc_server(potions, pets_needed)
         if response.StatusCode == 200 then
             print("✅ Request sent to PC successfully!")
         else
-            warn("⚠️  PC server responded with: " .. response.StatusCode)
+            warn("⚠️ PC server responded with: " .. response.StatusCode)
         end
-    end)
-end
-
-local function disableAccount()
-    if CONFIG.FARMSYNC_API_KEY == "" then return end
-    pcall(function()
-        request({
-            Url     = "https://api.farmsync.cloud/api/self/accounts/" .. playerName,
-            Method  = "PUT",
-            Headers = {
-                ["Authorization"] = "Bearer " .. CONFIG.FARMSYNC_API_KEY,
-                ["Content-Type"]  = "application/json",
-            },
-            Body = HttpService:JSONEncode({enabled = false})
-        })
-        print("🔴 Account disabled!")
     end)
 end
 
@@ -168,9 +235,7 @@ local function count_age_potions()
         if not data or not data.inventory or not data.inventory.food then return 0 end
         local count = 0
         for _, item in pairs(data.inventory.food) do
-            if item.kind == "pet_age_potion" then
-                count = count + 1
-            end
+            if item.kind == "pet_age_potion" then count = count + 1 end
         end
         return count
     end)
@@ -183,9 +248,7 @@ local function count_specific_pets(pet_kind)
         if not data or not data.inventory or not data.inventory.pets then return 0 end
         local total = 0
         for _, pet in pairs(data.inventory.pets) do
-            if pet.kind == pet_kind then
-                total = total + 1
-            end
+            if pet.kind == pet_kind then total = total + 1 end
         end
         return total
     end)
@@ -203,6 +266,9 @@ local function count_pets()
     return success and count or 0
 end
 
+-- ============================================
+-- AUTO ACCEPT
+-- ============================================
 local function setup_auto_accept(expected_pets)
     pcall(function()
         local tradeGui  = LocalPlayer.PlayerGui:WaitForChild("TradeApp").Frame
@@ -212,9 +278,9 @@ local function setup_auto_accept(expected_pets)
 
         print("\n✅ Auto-accept system ready (no spawn mode)")
 
-        -- Phase 1: Continuous dialog acceptor
+        -- Phase 1: Spam accept incoming trade requests
         task.spawn(function()
-            print("✅ Phase 1: Continuous dialog acceptor started")
+            print("✅ Phase 1: Trade request acceptor started")
             while task.wait(0.3) do
                 pcall(function()
                     local dialogVisible = dialogApp
@@ -240,7 +306,7 @@ local function setup_auto_accept(expected_pets)
             end
         end)
 
-        -- Phase 2: Auto-accept negotiation
+        -- Phase 2: Spam accept negotiation
         task.spawn(function()
             while task.wait(0.1) do
                 pcall(function()
@@ -251,7 +317,7 @@ local function setup_auto_accept(expected_pets)
             end
         end)
 
-        -- Phase 3: Auto-confirm trade
+        -- Phase 3: Spam confirm trade
         task.spawn(function()
             while task.wait(0.1) do
                 pcall(function()
@@ -264,17 +330,17 @@ local function setup_auto_accept(expected_pets)
 
         -- Monitor trades
         task.spawn(function()
-            local was_visible     = false
-            local last_pet_count  = initialPets
-            local no_change_time  = 0
-            local MAX_WAIT_TIME   = 5400
+            local was_visible       = false
+            local last_pet_count    = initialPets
+            local no_change_time    = 0
+            local MAX_WAIT_TIME     = 5400
             local last_status_check = 0
 
             while task.wait(0.5) do
                 pcall(function()
                     local current = count_pets()
 
-                    -- Smart server status check (every 10 seconds)
+                    -- Smart server status check every 10s
                     last_status_check = last_status_check + 0.5
                     if last_status_check >= 10 then
                         last_status_check = 0
@@ -311,9 +377,7 @@ local function setup_auto_accept(expected_pets)
                             return false
                         end)
 
-                        if check_ok and check_result then
-                            return
-                        end
+                        if check_ok and check_result then return end
                     end
 
                     -- Check for new pets
@@ -367,6 +431,9 @@ local function setup_auto_accept(expected_pets)
     end)
 end
 
+-- ============================================
+-- MAIN
+-- ============================================
 print("\n🔍 Analyzing inventory (without spawning)...")
 
 pcall(function()
@@ -378,7 +445,7 @@ pcall(function()
         return
     end
 
-    local age_ups          = RARITY_AGE_UPS[rarity_lower]
+    local age_ups           = RARITY_AGE_UPS[rarity_lower]
     local total_pets_needed = math.floor(potions / age_ups)
 
     if total_pets_needed == 0 then
@@ -387,11 +454,11 @@ pcall(function()
         return
     end
 
-    local existing_pets  = count_specific_pets(CONFIG.PET_KIND)
+    local existing_pets   = count_specific_pets(CONFIG.PET_KIND)
     local pets_to_request = total_pets_needed - existing_pets
 
     print("\n📊 Calculation:")
-    print("   Potions: " .. potions)
+    print("   Potions:      " .. potions)
     print("   Total needed: " .. total_pets_needed)
     print("   Already have: " .. existing_pets)
     print("   Will request: " .. pets_to_request)
