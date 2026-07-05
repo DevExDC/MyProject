@@ -230,6 +230,75 @@ local function resolveItem(input)
 end
 
 -- ============================================
+-- INVENTORY CATEGORIES + KIND->NAME LOOKUP
+-- ============================================
+
+local INVENTORY_CATEGORIES = { "pets", "vehicles", "toys", "food", "gifts", "eggs" }
+
+-- Build kind -> {name, category} once from KindDB so we can label counts nicely
+local kindInfo = {}
+
+local function buildKindInfo()
+    local ok, db = pcall(function()
+        return require(RS:WaitForChild("ClientDB"):WaitForChild("Inventory"):WaitForChild("KindDB"))
+    end)
+    if not ok then
+        log("⚠️ Could not load KindDB for inventory labeling")
+        return
+    end
+    for _, v in pairs(db) do
+        if v.kind then
+            kindInfo[v.kind] = { name = v.name or v.kind, category = v.category or "pets" }
+        end
+    end
+end
+
+buildKindInfo()
+
+-- ============================================
+-- BUILD + REPORT CURRENT INVENTORY (counts per kind)
+-- ============================================
+
+local function reportInventory()
+    local playerData = Data.get_data()[playerName]
+    if not playerData or not playerData.inventory then return end
+
+    local counts = {} -- kind -> count
+
+    for _, category in ipairs(INVENTORY_CATEGORIES) do
+        local inv = playerData.inventory[category]
+        if inv then
+            for _, item in pairs(inv) do
+                if item.kind then
+                    counts[item.kind] = (counts[item.kind] or 0) + 1
+                end
+            end
+        end
+    end
+
+    local items = {}
+    for kind, count in pairs(counts) do
+        local info = kindInfo[kind] or { name = kind, category = "pets" }
+        table.insert(items, {
+            category = info.category,
+            kind = kind,
+            name = info.name,
+            count = count
+        })
+    end
+
+    local _, err = backendPost("/api/script/inventory/update", {
+        server_id = SERVER_ID,
+        seller_username = playerName,
+        items = items
+    })
+
+    if err then
+        log("⚠️ Failed to report inventory: " .. err)
+    end
+end
+
+-- ============================================
 -- GET MATCHING ITEM UNIQUES FOR AN ORDER
 -- ============================================
 
@@ -452,6 +521,7 @@ sendWebhook("Dispatch script online. Server ID: " .. SERVER_ID)
 spawn(function()
     while true do
         pcall(reportPlayers)
+        pcall(reportInventory)
         task.wait(REPORT_INTERVAL)
     end
 end)
